@@ -26,17 +26,22 @@ def get_optimizer(opt):
 
 
 class Encoder(object):
-    def __init__(self, size, vocab_dim):
+    def __init__(self, size, state_size, vocab_dim):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, masks, encoder_state_input):
+        self.n_classes = 2  # O or Answer
+        self.state_size = state_size
+
+    # def add_placeholders(self):
+
+    def encode(self, inputs, seq_len_vec, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
-        masks, and an initial
-        hidden state input into this function.
+        masks, and an initial hidden state input into this function.
 
         :param inputs: Symbolic representations of your input
+        :param seq_len_vec: the actual length of the input (for masking)
         :param masks: this is to make sure tf.nn.dynamic_rnn doesn't iterate
                       through masked steps
         :param encoder_state_input: (Optional) pass this as initial hidden state
@@ -45,13 +50,36 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
+        # weights = {
+        #     'encoder_h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
+        #     'encoder_h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2]))
+        # }
+        # biases = {
+        #     'encoder_b1': tf.Variable(tf.random_normal([n_hidden_1])),
+        #     'encoder_b2': tf.Variable(tf.random_normal([n_hidden_2]))
+        # }
 
-        return
+        # l1 = tf.nn.sigmoid(tf.add(tf.matmul(inputs, 
+        #     weights['encoder_h1']), biases['encoder_b1']))
+        # l2 = tf.nn.sigmoid(tf.add(tf.matmul(inputs, 
+        #     weights['encoder_h2']), biases['encoder_b2']))
 
+        # weight = tf.get_variable("W_encoder", shape=[2 * self.state_size, self.state_size])
+
+        lstm_forward_cell = tf.contrib.rnn.LSTMCell(self.state_size)
+        lstm_backward_cell = tf.contrib.rnn.LSTMCell(self.state_size)
+
+        output, output_state_fw, output_state_bw = tf.contrib.rnn.bidirectional_dynamic_rnn(lstm_forward_cell, 
+            lstm_backward_cell, inputs, dtype=tf.float32, sequence_length=seq_len_vec, 
+            initial_state_fw=encoder_state_input, initial_state_bw=encoder_state_input)
+        
+        # encodings = tf.nn.sigmoid(output)
+        return output
 
 class Decoder(object):
-    def __init__(self, output_size):
+    def __init__(self, output_size, state_size):
         self.output_size = output_size
+        self.state_size = state_size
 
     def decode(self, knowledge_rep):
         """
@@ -65,11 +93,28 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
+        # weights = {
+        #     'decoder_h1': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_1])),
+        #     'decoder_h2': tf.Variable(tf.random_normal([n_hidden_1, n_input]))
+        # }
 
-        return
+        # biases = {
+        #     'decoder_b1': tf.Variable(tf.random_normal([n_hidden_1])),
+        #     'decoder_b2': tf.Variable(tf.random_normal([n_input]))
+        # }
+
+        # Concatenation of both forward and backward
+        lstm_fw_cell = tf.contrib.rnn.LSTMCell(self.state_size * 2)
+        lstm_bw_cell = tf.contrib.rnn.LSTMCell(self.state_size * 2)
+
+        output, output_state_fw, output_state_bw = tf.contrib.rnn.bidirectional_dynamic_rnn(lstm_forward_cell, 
+            lstm_backward_cell, knowledge_rep, dtype=tf.float32, 
+            initial_state_fw=encoder_state_input, initial_state_bw=encoder_state_input)
+
+        return output
 
 class QASystem(object):
-    def __init__(self, encoder, decoder, train_dir, *args):
+    def __init__(self, encoder, decoder, batch_size, train_dir, *args):
         """
         Initializes your System
 
@@ -78,8 +123,11 @@ class QASystem(object):
         :param args: pass in more arguments as needed
         """
         # Save your model parameters/checkpoints here
-        self.train_dir = train_dir
+        self.train_dir = train_dir  
+        self.encoder = encoder
+        self.decoder = decoder
 
+        self.batch_size = batch_size
         # ==== set up placeholder tokens ========
 
 
@@ -100,7 +148,11 @@ class QASystem(object):
         to assemble your reading comprehension system!
         :return:
         """
-        raise Exception("Connect all parts of your system here!")
+        inputs, seq_len = extract_input(self.train_dir)
+        encoded = self.encoder(inputs, seq_len, tf.get_variable('hidden_init', shape=[self.batch_size, 
+            self.encoder.state_size], initializer=tf.contrib.layers.xavier_initializer()))
+
+        
 
 
     def setup_loss(self):

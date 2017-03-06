@@ -62,15 +62,15 @@ def initialize_vocab(vocab_path):
 def main(_):
 
     # Do what you need to load datasets from FLAGS.data_dir
-    dataset = None
+    dataset = FLAGS.data_dir
 
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
 
-    encoder = Encoder(size=FLAGS.size)
-    deocder = Decoder(output_size=FLAGS.output_size)
+    encoder = Encoder(size=FLAGS.size, state_size=FLAGS.state_size)
+    decoder = Decoder(output_size=FLAGS.output_size, state_size=FLAGS.state_size)
 
-    qa = QASystem(encoder, deocder)
+    qa = QASystem(encoder, decoder, FLAGS.batch_size, FLAGS.train_dir, FLAGS.state_size)
 
     global_train_dir = '/tmp/cs224n-squad-train'
     # Adds symlink to {train_dir} from /tmp/cs224n-squad-train to canonicalize the
