@@ -23,6 +23,28 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
+def pad_sequence(sequences, max_length):
+    """
+    Given a list of sequences of word ids, pad each sequence to the 
+    desired length or truncate each sequence to max length
+    """
+    padded, effective_len = [], []
+    for seq in sequences:
+        pad_len = max_length - len(seq)
+        effective_len.append(len(seq))
+        if pad_len <= 0:
+            padded.append(seq[:max_length])
+        else:
+            padded.append(seq + [-1] * pad_len)
+    return padded, effective_len
+
+def get_minibatch(data, batch_size):
+    """
+    Given a complete dataset represented as dict, return the 
+    batch sized data with shuffling as ((context, question), label)
+    """
+    pass
+
 class Encoder(object):
     def __init__(self, size, vocab_dim):
         self.size = size
@@ -103,6 +125,9 @@ class Decoder(object):
         #     'decoder_b1': tf.Variable(tf.random_normal([n_hidden_1])),
         #     'decoder_b2': tf.Variable(tf.random_normal([n_input]))
         # }
+
+        outputsize = context size
+
         weights = tf.get_variable('w_decoder', shape=[self.state_size, self.output_size])
         biases = tf.get_variable('b_decoder', shape=(self.output_size, ))
 
@@ -128,9 +153,12 @@ class QASystem(object):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.embeddings = None
+        self.embeddings = []
+        self.context_length = FLAGS.output_size
+        self.question_length = 30
 
         # FLAGS.batch_size
+
         # ==== set up placeholder tokens ========
         # self.
 
@@ -151,6 +179,8 @@ class QASystem(object):
         to assemble your reading comprehension system!
         :return:
         """
+        put the network together (combine add loss, etc)
+
 
 
         inputs, seq_len = extract_input(self.train_dir)
@@ -173,8 +203,12 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("embeddings"):
+            # Choosing to use constant
+            self.embeddings = tf.Constant(np.load(FLAGS.embed_path)['glove'])
+            context_embed = 
 
-            pass
+
+            return context_embed, question_embed
 
     def optimize(self, session, train_x, train_y):
         """
@@ -301,8 +335,12 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
+        train_data, val_data = dataset['train'], dataset['val']
 
-
+        for epoch in range(FLAGS.epochs):
+            ((context_batch, question_batch), label_batch) = get_minibatch(train_data, self.batch_size)
+            context_data, context_len_vec = pad_sequence(context_batch, self.context_length)
+            question_data, question_len_vec = pad_sequence(question_batch, self.question_length)
 
 
         # some free code to print out number of parameters in your model
