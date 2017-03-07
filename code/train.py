@@ -14,9 +14,9 @@ from os.path import join as pjoin
 
 import logging
 
-import pylab as plt
-import plotly.plotly as py
-import plotly
+# import pylab as plt
+# import plotly.plotly as py
+# import plotly
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,7 +36,7 @@ tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
-tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
+tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -110,11 +110,18 @@ def load_data(data_dir):
         raise ValueError("Question file %s not found.", train_question_id)
 
     if tf.gfile.Exists(train_answer_id):
-        rev_answer = []
+        rev_answer, rev_label = [], [0] * len(dataset['train']['context'])
+        for i in range(len(dataset['train']['context'])):
+            rev_label[i] = [0] * len(dataset['train']['context'][i])
         with tf.gfile.GFile(train_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
-        dataset['train']['answer'] = [[int(s) for s in line] for line in rev_answer]
+        rev_answer = [[int(s) for s in m] for m in rev_answer]
+        assert len(rev_answer) == len(rev_label)
+        for i in range(len(rev_answer)):
+            rev_label[i][rev_answer[i][0]: rev_answer[i][1] + 1] = [1] * (rev_answer[i][1] + 1 - rev_answer[i][0])
+        # Using 1 to mark Answer and 0 for O
+        dataset['train']['answer'] = rev_label
     else:
         raise ValueError("Answer span file %s not found.", train_answer_id)
 
@@ -137,14 +144,21 @@ def load_data(data_dir):
         raise ValueError("Question file %s not found.", val_question_id)
 
     if tf.gfile.Exists(val_answer_id):
-        rev_answer = []
+        rev_answer, rev_label = [], [0] * len(dataset['val']['context'])
+        for i in range(len(dataset['val']['context'])):
+            rev_label[i] = [0] * len(dataset['val']['context'][i])
         with tf.gfile.GFile(val_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
-        dataset['val']['answer'] = [[int(s) for s in line] for line in rev_answer]
+        rev_answer = [[int(s) for s in m] for m in rev_answer]
+        assert len(rev_answer) == len(rev_label)
+        for i in range(len(rev_answer)):
+            rev_label[i][rev_answer[i][0]: rev_answer[i][1] + 1] = [1] * (rev_answer[i][1] + 1 - rev_answer[i][0])
+        dataset['val']['answer'] = rev_label
     else:
         raise ValueError("Answer span file %s not found.", val_answer_id)
 
+    print(dataset['val']['answer'])
     # train_context_dist = [len(s) for s in dataset['train']['context']]
     # train_question_dist = [len(s) for s in dataset['train']['question']]
     # train_answer_dist = [s[1] - s[0] for s in dataset['train']['answer']]

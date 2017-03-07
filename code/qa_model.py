@@ -13,6 +13,7 @@ from tensorflow.python.ops import variable_scope as vs
 from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
+FLAGS = tf.app.flags.FLAGS
 
 def get_optimizer(opt):
     if opt == "adam":
@@ -100,7 +101,7 @@ class Encoder(object):
 class Decoder(object):
     def __init__(self, output_size):
         self.output_size = output_size
-        self.state_size = tf.app.flags.FLAGS.state_size
+        self.state_size = FLAGS.state_size
 
         self.n_classes = 2  # O or Answer
 
@@ -126,7 +127,7 @@ class Decoder(object):
         #     'decoder_b2': tf.Variable(tf.random_normal([n_input]))
         # }
 
-        outputsize = context size
+        # outputsize = context size
 
         weights = tf.get_variable('w_decoder', shape=[self.state_size, self.output_size])
         biases = tf.get_variable('b_decoder', shape=(self.output_size, ))
@@ -153,14 +154,20 @@ class QASystem(object):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.embeddings = []
+        self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'])
         self.context_length = FLAGS.output_size
         self.question_length = 30
 
         # FLAGS.batch_size
 
         # ==== set up placeholder tokens ========
-        # self.
+        self.context_placeholder = tf.placeholder(tf.int32, (None, self.context_length),
+            name='context_input')
+        self.question_placeholder = tf.placeholder(tf.int32, (None, self.question_length), 
+            name='question_input')
+        self.labels_placeholder = tf.placeholder(tf.int32, (None, context_length),
+            name='labels_input')
+        self.dropout_placeholder = tf.placeholder(tf.float32, (), name='dropout')
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
@@ -169,6 +176,8 @@ class QASystem(object):
             self.setup_loss()
 
         # ==== set up training/updating procedure ====
+        
+
         pass
 
 
@@ -179,13 +188,12 @@ class QASystem(object):
         to assemble your reading comprehension system!
         :return:
         """
-        put the network together (combine add loss, etc)
+        # put the network together (combine add loss, etc)
 
+        pass
 
-
-        inputs, seq_len = extract_input(self.train_dir)
-        encoded = self.encoder(inputs, seq_len, tf.get_variable('encoder_hidden_init', 
-            shape=[self.batch_size, self.encoder.state_size]))
+        # encoded = self.encoder(inputs, seq_len, tf.get_variable('encoder_hidden_init', 
+        #     shape=[self.batch_size, self.encoder.state_size]))
 
 
     def setup_loss(self):
@@ -194,8 +202,10 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("loss"):
-            pass
+
             # _, loss = self.create_feed_dict
+            pass
+
 
     def setup_embeddings(self):
         """
@@ -203,10 +213,15 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("embeddings"):
-            # Choosing to use constant
-            self.embeddings = tf.Constant(np.load(FLAGS.embed_path)['glove'])
-            context_embed = 
 
+            # Choosing to use constant            
+            context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
+                self.context_placeholder, name='context_embeddings'), 
+                    [-1, self.context_length, FLAGS.embedding_size])
+
+            question_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
+                self.question_placeholder, name='context_embeddings'), 
+                    [-1, self.question_length, FLAGS.embedding_size])
 
             return context_embed, question_embed
 
