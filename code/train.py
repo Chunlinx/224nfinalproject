@@ -158,7 +158,6 @@ def load_data(data_dir):
     else:
         raise ValueError("Answer span file %s not found.", val_answer_id)
 
-    print(dataset['val']['answer'])
     # train_context_dist = [len(s) for s in dataset['train']['context']]
     # train_question_dist = [len(s) for s in dataset['train']['question']]
     # train_answer_dist = [s[1] - s[0] for s in dataset['train']['answer']]

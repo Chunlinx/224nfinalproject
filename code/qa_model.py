@@ -37,14 +37,30 @@ def pad_sequence(sequences, max_length):
             padded.append(seq[:max_length])
         else:
             padded.append(seq + [-1] * pad_len)
-    return padded, effective_len
+    return np.ndarray(padded), np.ndarray(effective_len)
+
+def preprocess_dataset(dataset):
+
+    context_, question_, answer_ = dataset['context'], dataset['question'], dataset['answer']
+    context_padded = pad_sequence(context_, self.context_length)
+    question_padded = pad_sequence(question_, self.question_length) 
+    answer_padded = pad_sequence(answer_, self.context_length)
+    assert len(context_padded[0]) == len(question_padded[1]) == len(answer_padded[0])
+    return [context_padded, question_padded, answer_padded]
 
 def get_minibatch(data, batch_size):
     """
     Given a complete dataset represented as dict, return the 
     batch sized data with shuffling as ((context, question), label)
     """
-    pass
+    def minibatch(data, batch_idx):
+        return data[batch_idx]
+
+    data_size = len(data[1])
+    indices = np.random.shuffle(np.arange(data_size))
+    for i in np.arange(0, data_size, batch_size):
+        batch_indices = indices[i: i + batch_size]
+        yield [minibatch(d, batch_indices) for d in data]
 
 class Encoder(object):
     def __init__(self, size, vocab_dim):
@@ -165,6 +181,10 @@ class QASystem(object):
             name='context_input')
         self.question_placeholder = tf.placeholder(tf.int32, (None, self.question_length), 
             name='question_input')
+        self.context_mask_placeholder = tf.placeholder(tf.int32, (None, FLAGS.batch_size),
+            name='context_mask_input')
+        self.question_mask_placeholder = tf.placeholder(tf.int32, (None, FLAGS.batch_size),
+            name='question_mask_input')
         self.labels_placeholder = tf.placeholder(tf.int32, (None, context_length),
             name='labels_input')
         self.dropout_placeholder = tf.placeholder(tf.float32, (), name='dropout')
@@ -180,6 +200,16 @@ class QASystem(object):
 
         pass
 
+    def create_feed_dict(self, context, context_mask, question, 
+        question_mask, labels=None, dropout=1):
+
+        feed_dict = {self.context_placeholder: context, self.context_mask_placeholder: context_mask,
+            self.question_placeholder: question, self.question_mask_placeholder: question_mask,
+            self.dropout_placeholder: dropout}
+        if labels is not None:
+            feed_dict[self.labels_placeholder] = labels
+
+        return feed_dict
 
     def setup_system(self):
         """
@@ -190,7 +220,7 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        pass
+        self.train_op = get_optimizer(FLAGS.optimizer)(FLAGS.learning_rate)
 
         # encoded = self.encoder(inputs, seq_len, tf.get_variable('encoder_hidden_init', 
         #     shape=[self.batch_size, self.encoder.state_size]))
@@ -203,8 +233,9 @@ class QASystem(object):
         """
         with vs.variable_scope("loss"):
 
-            # _, loss = self.create_feed_dict
-            pass
+            loss_vec = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.labels_placeholder,
+                logits=self.answer)
+            self.loss = tf.reduce_mean(loss_vec)
 
 
     def setup_embeddings(self):
@@ -350,13 +381,21 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
-        train_data, val_data = dataset['train'], dataset['val']
+        train_data = preprocess_dataset(dataset['train'])
+        val_data = preprocess_dataset(dataset['val'])
 
         for epoch in range(FLAGS.epochs):
-            ((context_batch, question_batch), label_batch) = get_minibatch(train_data, self.batch_size)
-            context_data, context_len_vec = pad_sequence(context_batch, self.context_length)
-            question_data, question_len_vec = pad_sequence(question_batch, self.question_length)
 
+            for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
+                context_batch, context_len_vec = train_data[0]
+                question_batch, question_len_vec = train_data[1]
+                label_batch, _ = train_data[2]
+                feed = self.create_feed_dict(context_batch, context_len_vec, question_batch, 
+                    question_len_vec, labels=label_batch, dropout=FLAGS.dropout)
+
+                # Not annealing at this point yet
+                train_op = get_optimizer('adam')(FLAGS.learning_rate).minimize()
+                _, loss = session.run([get_optimizer('adam'), ])
 
         # some free code to print out number of parameters in your model
         # it's always good to check!
