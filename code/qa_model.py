@@ -36,17 +36,18 @@ def pad_sequence(sequences, max_length):
         if pad_len <= 0:
             padded.append(seq[:max_length])
         else:
-            padded.append(seq + [-1] * pad_len)
+            padded.append(seq + [PAD_ID] * pad_len)
     return np.ndarray(padded), np.ndarray(effective_len)
 
 def preprocess_dataset(dataset):
 
-    context_, question_, answer_ = dataset['context'], dataset['question'], dataset['answer']
+    context_, question_, a_s_, a_e_ = dataset['context'], dataset['question'], dataset['answer_start'], dataset['answer_end']
     context_padded = pad_sequence(context_, self.context_length)
     question_padded = pad_sequence(question_, self.question_length) 
-    answer_padded = pad_sequence(answer_, self.context_length)
-    assert len(context_padded[0]) == len(question_padded[1]) == len(answer_padded[0])
-    return [context_padded, question_padded, answer_padded]
+    a_s_padded = pad_sequence(a_s_, self.context_length)
+    a_e_padded = pad_sequence(a_e_, self.context_length)
+    assert len(context_padded[0]) == len(question_padded[1]) == len(a_s_padded[0]) == len(a_e_padded[0])
+    return [context_padded, question_padded, a_s_padded, a_e_padded]
 
 def get_minibatch(data, batch_size):
     """
@@ -67,7 +68,10 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, seq_len_vec, encoder_state_input):
+        self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
+        self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
+
+    def encode(self, inputs, seq_len_vec, encoder_state_input, scope=''):
         """
         In a generalized encode function, you pass in your inputs,
         masks, and an initial hidden state input into this function.
@@ -82,37 +86,46 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
-        # weights = {
-        #     'encoder_h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-        #     'encoder_h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2]))
-        # }
-        # biases = {
-        #     'encoder_b1': tf.Variable(tf.random_normal([n_hidden_1])),
-        #     'encoder_b2': tf.Variable(tf.random_normal([n_hidden_2]))
-        # }
+        # symbolic function 
+        # everything else
 
-        # l1 = tf.nn.sigmoid(tf.add(tf.matmul(inputs, 
-        #     weights['encoder_h1']), biases['encoder_b1']))
-        # l2 = tf.nn.sigmoid(tf.add(tf.matmul(inputs, 
-        #     weights['encoder_h2']), biases['encoder_b2']))
+        # real function
+        # session.run()
 
-        # weight = tf.get_variable("W_encoder", shape=[2 * self.state_size, self.state_size])
+        with vs.variable_scope(scope, True):
 
-        # weights = tf.get_variable('w_decoder', shape=[self.state_size * 2, self.state_size])
-        # biases = tf.get_variable('b_decoder', shape=(self.state_size, ))
 
-        lstm_forward_cell = tf.contrib.rnn.LSTMCell(self.size)
-        lstm_backward_cell = tf.contrib.rnn.LSTMCell(self.size)
-
-        output, output_state_fw, output_state_bw = tf.contrib.rnn.bidirectional_dynamic_rnn(lstm_forward_cell, 
-            lstm_backward_cell, inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
-            initial_state_fw=encoder_state_input, initial_state_bw=encoder_state_input)
+            (fw_o, bw_o), _ = tf.contrib.rnn.bidirectional_dynamic_rnn(self.forward_cell, 
+                self.backward_cell, inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
+                initial_state_fw=encoder_state_input, initial_state_bw=encoder_state_input)
+            
+            # encodings = tf.nn.sigmoid(tf.add(tf.matmul(output, weights), biases))
+        # encodings = tf.concat(1, [output_state_fw, output_state_bw])
         
-        # encodings = tf.nn.sigmoid(tf.add(tf.matmul(output, weights), biases))
-        encodings = tf.concat(1, [output_state_fw, output_state_bw])
+        encodings = tf.concat([fw_o, bw_o])
+        last_hidden_state = tf.concat([fw_o[:, :, -1], bw_o[:, :, -1]])
         print (encodings.shape)
+        return encodings, last_hidden_state #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
 
-        return encodings
+    # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
+    #     self.attn_cell = AttnGRUCell(self.size, prev_states)
+    #     with vs.variable_scope(scope, reuse):
+    #         o, _ = dynamic_rnn(self.attn_cell, inputs, srclen=srclen)
+
+def linear(inputs, output_size, scope=''):
+
+    shape = inputs.get_shape().as_list()
+    if len(shape) != 2:
+        raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
+    if not shape[1]:
+        raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
+    input_size = shape[1]
+
+    with vs.variable_scope(scope or "simple_linear"):
+        W = tf.get_variable("linear_W", [output_size, input_size], dtype=inputs.dtype)
+        b = tf.get_variable("linear_b", [output_size], dtype=inputs.dtype)
+
+    return tf.matmul(inputs, tf.transpose(W)) + b
 
 class Decoder(object):
     def __init__(self, output_size):
@@ -121,7 +134,8 @@ class Decoder(object):
 
         self.n_classes = 2  # O or Answer
 
-    def decode(self, knowledge_rep):
+
+    def decode(self, h_q, h_c):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -133,29 +147,26 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        # weights = {
-        #     'decoder_h1': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_1])),
-        #     'decoder_h2': tf.Variable(tf.random_normal([n_hidden_1, n_input]))
-        # }
+        # h_q, h_p : 2-d question / paragraph encoding
 
-        # biases = {
-        #     'decoder_b1': tf.Variable(tf.random_normal([n_hidden_1])),
-        #     'decoder_b2': tf.Variable(tf.random_normal([n_input]))
-        # }
+        # Linear mix: h_q * W  + b + h_p * W + b
+        with vs.variable_scope('a_s'):
+            a_s = linear([h_q, h_c], self.output_size, scope='a_s')
+        with vs.variable_scope('a_e'):
+            a_e = linear([h_q, h_c], self.output_size, scope='a_e')
 
-        # outputsize = context size
+        return a_s, a_e
 
-        weights = tf.get_variable('w_decoder', shape=[self.state_size, self.output_size])
-        biases = tf.get_variable('b_decoder', shape=(self.output_size, ))
+class AttnGRUCell(rnn_cell.GRUCell):
 
-        # Concatenation of both forward and backward
-        lstm_fw_cell = tf.contrib.rnn.LSTMCell(self.state_size * 2)
-        lstm_bw_cell = tf.contrib.rnn.LSTMCell(self.state_size * 2)
+    def __init__():
 
-        output, output_state_fw, output_state_bw = tf.contrib.rnn.bidirectional_dynamic_rnn(lstm_forward_cell, 
-            lstm_backward_cell, knowledge_rep, dtype=tf.float32)
+        pass
 
-        return tf.matmul(output[-1], weights) + biases
+    def __call__():
+
+        pass
+
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -185,8 +196,10 @@ class QASystem(object):
             name='context_mask_input')
         self.question_mask_placeholder = tf.placeholder(tf.int32, (None, FLAGS.batch_size),
             name='question_mask_input')
-        self.labels_placeholder = tf.placeholder(tf.int32, (None, context_length),
-            name='labels_input')
+        self.answer_start_label_placeholder = tf.placeholder(tf.int32, (None, self.context_length),
+            name='a_s_label')
+        self.answer_end_label_placeholder = tf.placeholder(tf.int32, (None, self.context_length),
+            name='a_e_label')
         self.dropout_placeholder = tf.placeholder(tf.float32, (), name='dropout')
 
         # ==== assemble pieces ====
@@ -196,20 +209,7 @@ class QASystem(object):
             self.setup_loss()
 
         # ==== set up training/updating procedure ====
-        
-
-        pass
-
-    def create_feed_dict(self, context, context_mask, question, 
-        question_mask, labels=None, dropout=1):
-
-        feed_dict = {self.context_placeholder: context, self.context_mask_placeholder: context_mask,
-            self.question_placeholder: question, self.question_mask_placeholder: question_mask,
-            self.dropout_placeholder: dropout}
-        if labels is not None:
-            feed_dict[self.labels_placeholder] = labels
-
-        return feed_dict
+        self.train_op = get_optimizer('adam')(FLAGS.learning_rate).minimize(self.loss)
 
     def setup_system(self):
         """
@@ -220,23 +220,29 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        self.train_op = get_optimizer(FLAGS.optimizer)(FLAGS.learning_rate)
+        q_o, q_h = encoder.encode(self.question_embed, self.question_mask_placeholder, 
+            None, scope='question_encode')
+        c_o, c_h = encoder.encode(self.context_embed, self.context_mask_placeholder,
+            q_h, scope='context_encode')
 
-        # encoded = self.encoder(inputs, seq_len, tf.get_variable('encoder_hidden_init', 
-        #     shape=[self.batch_size, self.encoder.state_size]))
-
+        # This is the predict op
+        self.a_s, self.a_e = decoder.decode(q_h, c_h)
 
     def setup_loss(self):
         """
         Set up your loss computation here
         :return:
         """
+        # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
 
-            loss_vec = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.labels_placeholder,
-                logits=self.answer)
-            self.loss = tf.reduce_mean(loss_vec)
+            loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.answer_start_label_placeholder,
+                logits=self.a_s)
+            loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.answer_end_label_placeholder,
+                logits=self.a_e)
+            loss_vec = loss_vec_1 + loss_vec_2
 
+            self.loss = tf.reduce_mean(loss_vec)
 
     def setup_embeddings(self):
         """
@@ -246,15 +252,13 @@ class QASystem(object):
         with vs.variable_scope("embeddings"):
 
             # Choosing to use constant            
-            context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
+            self.context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
                 self.context_placeholder, name='context_embeddings'), 
                     [-1, self.context_length, FLAGS.embedding_size])
 
-            question_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
+            self.question_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
                 self.question_placeholder, name='context_embeddings'), 
                     [-1, self.question_length, FLAGS.embedding_size])
-
-            return context_embed, question_embed
 
     def optimize(self, session, train_x, train_y):
         """
@@ -262,33 +266,41 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = {}
-
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
+        input_feed = {}
+        input_feed[self.context_placeholder] = train_x[0][0]
+        input_feed[self.question_placeholder] = train_x[1][0]
+        input_feed[self.context_mask_placeholder] = train_x[0][1]
+        input_feed[self.question_mask_placeholder] = train_x[1][1]
+        input_feed[self.answer_start_label_placeholder] = train_y[0]
+        input_feed[self.answer_end_label_placeholder] = train_y[1]
 
-        output_feed = []
-
+        # Gradient norm
+        output_feed = [self.loss, self.train_op]
         outputs = session.run(output_feed, input_feed)
 
         return outputs
 
-    def test(self, session, valid_x, valid_y):
+    def test(self, session, valid_context, valid_question, valid_y):
         """
         in here you should compute a cost for your validation set
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        input_feed = {}
-
         # fill in this feed_dictionary like:
         # input_feed['valid_x'] = valid_x
+        input_feed = {}
+        input_feed[self.context_placeholder] = valid_context[0]
+        input_feed[self.context_mask_placeholder] = valid_context[1]
+        input_feed[self.question_placeholder] = valid_question[0]
+        input_feed[self.question_mask_placeholder] = valid_question[1]
+        input_feed[self.answer_start_label_placeholder] = valid_y[0]
+        input_feed[self.answer_end_label_placeholder] = valid_y[1]
 
-        output_feed = []
-
-        outputs = session.run(output_feed, input_feed)
-
-        return outputs
+        output_feed = [self.loss]
+        loss = session.run(output_feed, input_feed)
+        return loss
 
     def decode(self, session, test_x):
         """
@@ -296,15 +308,17 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed = {}
-
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
+        input_feed = {}
 
-        output_feed = []
+        input_feed[self.context_placeholder]: test_x[0][0]
+        input_feed[self.question_placeholder]: test_x[1][0]
+        input_feed[self.context_mask_placeholder]: test_x[0][1]
+        input_feed[self.question_mask_placeholder]: test_x[1][1]
 
+        output_feed = [self.a_s, self.a_e]
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def answer(self, session, test_x):
@@ -328,10 +342,8 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = 0
-
-        for valid_x, valid_y in valid_dataset:
-            valid_cost = self.test(sess, valid_x, valid_y)
+        valid_c, valid_q, valid_a_s, valid_a_e = valid_dataset
+        valid_cost = self.test(sess, valid_c, valid_q, (valid_a_s[0], valid_a_e[0]))
 
         return valid_cost
 
@@ -353,6 +365,11 @@ class QASystem(object):
 
         f1 = f1_score()
         em = exact_match_score()
+
+        for p, q in zip(context, question):
+            a_s, a_e = self.answer(session, p, q)
+            answer = p[a_s: a_e + 1]
+            f1_score()
 
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
@@ -382,20 +399,22 @@ class QASystem(object):
         :return:
         """
         train_data = preprocess_dataset(dataset['train'])
-        val_data = preprocess_dataset(dataset['val'])
 
         for epoch in range(FLAGS.epochs):
-
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
-                context_batch, context_len_vec = train_data[0]
-                question_batch, question_len_vec = train_data[1]
-                label_batch, _ = train_data[2]
-                feed = self.create_feed_dict(context_batch, context_len_vec, question_batch, 
-                    question_len_vec, labels=label_batch, dropout=FLAGS.dropout)
-
+                a_s_batch, _ = train_data[2]
+                a_e_batch, _ = train_data[3]
                 # Not annealing at this point yet
-                train_op = get_optimizer('adam')(FLAGS.learning_rate).minimize()
-                _, loss = session.run([get_optimizer('adam'), ])
+                # Return loss and gradient probably
+                loss, _ = self.optimize(session, (train_data[0], train_data[1]), 
+                    (a_s_batch, a_e_batch))
+                
+                # Save model here 
+                tf.Saver()
+            val_loss = self.validate(session, preprocess_dataset(dataset['val']))
+
+            self.evaluate_answer(session, data, a) # at the end of epoch
+            self.evaluate_answer(session, data_val, a)
 
         # some free code to print out number of parameters in your model
         # it's always good to check!

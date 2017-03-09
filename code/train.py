@@ -10,6 +10,7 @@ from tensorflow.python.platform import gfile
 import numpy as np
 
 from qa_model import Encoder, QASystem, Decoder
+from qa_data import PAD_ID
 from os.path import join as pjoin
 
 import logging
@@ -80,8 +81,8 @@ def get_normalized_train_dir(train_dir):
 
 def load_data(data_dir):
 
-    dataset = {'train': {'context': [], 'question': [], 'answer': []}, 
-               'val': {'context': [], 'question': [], 'answer': []}}
+    dataset = {'train': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}, 
+               'val': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}}
 
     train_context_id = data_dir + '/train.ids.context'
     val_context_id = data_dir + '/val.ids.context'
@@ -110,18 +111,20 @@ def load_data(data_dir):
         raise ValueError("Question file %s not found.", train_question_id)
 
     if tf.gfile.Exists(train_answer_id):
-        rev_answer, rev_label = [], [0] * len(dataset['train']['context'])
+        rev_answer, start_label, end_label = [], [0] * len(dataset['train']['context']), [0] * len(dataset['train']['context'])
         for i in range(len(dataset['train']['context'])):
             rev_label[i] = [0] * len(dataset['train']['context'][i])
         with tf.gfile.GFile(train_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
-        rev_answer = [[int(s) for s in m] for m in rev_answer]
+        rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
         assert len(rev_answer) == len(rev_label)
         for i in range(len(rev_answer)):
-            rev_label[i][rev_answer[i][0]: rev_answer[i][1] + 1] = [1] * (rev_answer[i][1] + 1 - rev_answer[i][0])
+            start_label[i][rev_answer[i][0]] = 1
+            end_label[i][rev_answer[i][1]] = 1
         # Using 1 to mark Answer and 0 for O
-        dataset['train']['answer'] = rev_label
+        dataset['train']['answer_start'] = start_label
+        dataset['train']['answer_end'] = end_label
     else:
         raise ValueError("Answer span file %s not found.", train_answer_id)
 
@@ -144,17 +147,20 @@ def load_data(data_dir):
         raise ValueError("Question file %s not found.", val_question_id)
 
     if tf.gfile.Exists(val_answer_id):
-        rev_answer, rev_label = [], [0] * len(dataset['val']['context'])
+        rev_answer, start_label, end_label = [], [0] * len(dataset['val']['context']), [0] * len(dataset['val']['context'])
         for i in range(len(dataset['val']['context'])):
             rev_label[i] = [0] * len(dataset['val']['context'][i])
-        with tf.gfile.GFile(val_answer_id, mode='r') as a:
+        with tf.gfile.GFile(train_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
-        rev_answer = [[int(s) for s in m] for m in rev_answer]
+        rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
         assert len(rev_answer) == len(rev_label)
         for i in range(len(rev_answer)):
-            rev_label[i][rev_answer[i][0]: rev_answer[i][1] + 1] = [1] * (rev_answer[i][1] + 1 - rev_answer[i][0])
-        dataset['val']['answer'] = rev_label
+            start_label[i][rev_answer[i][0]] = 1
+            end_label[i][rev_answer[i][1]] = 1
+        # Using 1 to mark Answer and 0 for O
+        dataset['val']['answer_start'] = start_label
+        dataset['val']['answer_end'] = end_label
     else:
         raise ValueError("Answer span file %s not found.", val_answer_id)
 
