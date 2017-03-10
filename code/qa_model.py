@@ -195,7 +195,7 @@ class QASystem(object):
 
         self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         self.context_length = FLAGS.output_size
-        self.question_length = 30
+        self.question_length = FLAGS.question_size
 
         # FLAGS.batch_size
 
@@ -281,8 +281,10 @@ class QASystem(object):
         input_feed = {}
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
-        input_feed[self.context_mask_placeholder] = train_x[0][1]
-        input_feed[self.question_mask_placeholder] = train_x[1][1]
+        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 0, 
+            tf.app.flags.FLAGS.output_size)
+        input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0,
+            tf.app.flags.FLAGS.question_size)
         input_feed[self.answer_start_label_placeholder] = train_y[0]
         input_feed[self.answer_end_label_placeholder] = train_y[1]
 
@@ -375,7 +377,9 @@ class QASystem(object):
 
         f1 = f1_score()
         em = exact_match_score()
-
+        saver = tf.train.Saver()
+        checkpoints = saver.last_checkpoints()
+        saver.restore(session, checkpoints[-1])
         for p, q in zip(context, question):
             a_s, a_e = self.answer(session, p, q)
             answer = p[a_s: a_e + 1]
@@ -410,7 +414,7 @@ class QASystem(object):
         """
         train_data = preprocess_dataset(dataset['train'], 
             self.context_length, self.question_length)
-
+        saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
         for epoch in range(FLAGS.epochs):
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
 
@@ -418,12 +422,12 @@ class QASystem(object):
                 a_e_batch = batch[3]
                 # Not annealing at this point yet
                 # Return loss and gradient probably
-                # print(batch[1][1])
                 loss, _ = self.optimize(session, (batch[0], batch[1]), 
                     (a_s_batch, a_e_batch))
                 print(loss, i)
+
                 # Save model here 
-                # tf.Saver()
+            saver.save(session, FLAGS.train_dir, global_step=epoch)
             val_loss = self.validate(session, preprocess_dataset(dataset['val']))
 
             self.evaluate_answer(session, data, a) # at the end of epoch
