@@ -42,7 +42,8 @@ def pad_sequence(sequences, max_length):
 
 def preprocess_dataset(dataset, context_len, question_len):
 
-    context_, question_, a_s_, a_e_ = dataset['context'], dataset['question'], dataset['answer_start'], dataset['answer_end']
+    context_, question_, a_s_, a_e_ = dataset['context'], \
+        dataset['question'], dataset['answer_start'], dataset['answer_end']
     context_padded = pad_sequence(context_, context_len)
     question_padded = pad_sequence(question_, question_len) 
     assert len(context_padded[0]) == len(question_padded[1])
@@ -100,9 +101,6 @@ class Encoder(object):
    
         last_output = tf.concat([fw_out[-1], bw_out[-1]], 1)
         last_output_state = tf.concat([fw_out_state[-1], bw_out_state[-1]], 1)
-        # last_output = tf.add(fw_out[-1], bw_out[-1])
-        # last_output_state = tf.add(fw_out_state[-1], bw_out_state[-1])
-        # How to concat???
 
         return last_output, last_output_state #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
 
@@ -110,21 +108,6 @@ class Encoder(object):
     #     self.attn_cell = AttnGRUCell(self.size, prev_states)
     #     with vs.variable_scope(scope, reuse):
     #         o, _ = dynamic_rnn(self.attn_cell, inputs, srclen=srclen)
-
-# def linear(inputs, output_size, scope=''):
-
-#     shape = inputs.get_shape().as_list()
-#     if len(shape) != 2:
-#         raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
-#     if not shape[1]:
-#         raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
-#     input_size = shape[1]
-
-#     with vs.variable_scope(scope or "simple_linear"):
-#         W = tf.get_variable("linear_W", [output_size, input_size], dtype=inputs.dtype)
-#         b = tf.get_variable("linear_b", [output_size], dtype=inputs.dtype)
-
-#     return tf.matmul(inputs, tf.transpose(W)) + b
 
 class Decoder(object):
     def __init__(self, output_size):
@@ -147,27 +130,51 @@ class Decoder(object):
         # h_q, h_p : 2-d question / paragraph encoding
 
         # Linear mix: h_q * W1 + h_p * W2 + b
-        with vs.variable_scope('a_s'):
-            Wq = tf.get_variable("W_as_q", shape=[2 * self.state_size, 
-                self.output_size], initializer=tf.contrib.layers.xavier_initializer())
-            Wc = tf.get_variable("W_as_c", shape=[2 * self.state_size, 
-                self.output_size], initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.get_variable("b_as", shape=(1, self.output_size), 
-                initializer=tf.contrib.layers.xavier_initializer())
-            # a_s = linear([h_q, h_c], self.output_size, scope='a_s')
-            a_s = tf.matmul(h_q, Wq) + tf.matmul(h_c, Wc) + b
-
-        with vs.variable_scope('a_e'):
-            Wq = tf.get_variable("W_ae_q", shape=[2 * self.state_size, 
-                self.output_size], initializer=tf.contrib.layers.xavier_initializer())
-            Wc = tf.get_variable("W_ae_c", shape=[2 *self.state_size, 
-                self.output_size], initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.get_variable("b_ae", shape=(1, self.output_size), 
-                initializer=tf.contrib.layers.xavier_initializer())
-            a_e = tf.matmul(h_q, Wq) + tf.matmul(h_c, Wc) + b
-            # a_e = linear([h_q, h_c], self.output_size, scope='a_e')
-
+        a_s = _linear([h_q, h_c], self.output_size, True, scope='a_s')
+        a_e = _linear([h_q, h_c], self.output_size, True, scope='a_e')
         return a_s, a_e
+
+def _linear(args, output_size, bias, bias_start=0.0, scope=None):
+    """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+      Args:
+        args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+        output_size: int, second dimension of W[i].
+        bias: boolean, whether to add a bias term or not.
+        bias_start: starting value to initialize the bias; 0 by default.
+        scope: VariableScope for the created subgraph; defaults to "Linear".
+      Returns:
+        A 2D Tensor with shape [batch x output_size] equal to
+        sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+      Raises:
+        ValueError: if some of the arguments has unspecified or wrong shape.
+      """
+    # if args is None or (nest.is_sequence(args) and not args):
+    #     raise ValueError("`args` must be specified")
+    # if not nest.is_sequence(args):
+    #     args = [args]
+
+    # Calculate the total size of arguments on dimension 1.
+    total_arg_size = 0
+    shapes = [a.get_shape().as_list() for a in args]
+    for shape in shapes:
+        if len(shape) != 2:
+            raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
+        if not shape[1]:
+            raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
+        else:
+          total_arg_size += shape[1]
+
+    # Now the computation.
+    with vs.variable_scope(scope or "Linear"):
+        matrix = vs.get_variable("Matrix", [total_arg_size, output_size])
+        if len(args) == 1:
+            res = tf.matmul(args[0], matrix)
+        else:
+            res = tf.matmul(tf.concat(args, 1), matrix)
+        if not bias:
+            return res
+        bias_term = vs.get_variable("Bias", [output_size])
+    return res + bias_term
 
 # class AttnGRUCell(rnn_cell.GRUCell):
 
@@ -235,8 +242,11 @@ class QASystem(object):
         q_o, q_h = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
             None, scope='question_encode')
 
+        related = _linear([q_h], FLAGS.state_size, True, scope='question_decode')
+
         c_o, c_h = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
-            None, scope='context_encode')   # tf.contrib.rnn.LSTMStateTuple(q_h, q_o)
+            tf.contrib.rnn.LSTMStateTuple(related, related), 
+                scope='context_encode')   # tf.contrib.rnn.LSTMStateTuple(q_h, q_o)
 
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode(q_h, c_h)
@@ -248,9 +258,11 @@ class QASystem(object):
         """
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
-            loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.answer_start_label_placeholder,
+            loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=self.answer_start_label_placeholder,
                 logits=self.a_s)
-            loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.answer_end_label_placeholder,
+            loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=self.answer_end_label_placeholder,
                 logits=self.a_e)
             self.loss = tf.reduce_mean(loss_vec_1 + loss_vec_2)
 
@@ -377,6 +389,9 @@ class QASystem(object):
 
         f1 = f1_score()
         em = exact_match_score()
+
+        indices = np.random.choice(sample)
+        x = zip()
         saver = tf.train.Saver()
         checkpoints = saver.last_checkpoints()
         saver.restore(session, checkpoints[-1])
