@@ -10,21 +10,16 @@ from tensorflow.python.platform import gfile
 import numpy as np
 
 from qa_model import Encoder, QASystem, Decoder
-from qa_data import PAD_ID
 from os.path import join as pjoin
 
 import logging
 
-# import pylab as plt
-# import plotly.plotly as py
-# import plotly
-
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("batch_size", 32, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 10, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("output_size", 375, "The output size of your model.")   # 750
@@ -112,16 +107,14 @@ def load_data(data_dir):
 
     if tf.gfile.Exists(train_answer_id):
         rev_answer, start_label, end_label = [], [0] * len(dataset['train']['context']), [0] * len(dataset['train']['context'])
-        for i in range(len(dataset['train']['context'])):
-            rev_label[i] = [0] * len(dataset['train']['context'][i])
         with tf.gfile.GFile(train_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
         rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
-        assert len(rev_answer) == len(rev_label)
+        assert len(rev_answer) == len(start_label) == len(end_label)
         for i in range(len(rev_answer)):
-            start_label[i][rev_answer[i][0]] = 1
-            end_label[i][rev_answer[i][1]] = 1
+            start_label[i] = rev_answer[i][0]
+            end_label[i] = rev_answer[i][1]
         # Using 1 to mark Answer and 0 for O
         dataset['train']['answer_start'] = start_label
         dataset['train']['answer_end'] = end_label
@@ -148,45 +141,19 @@ def load_data(data_dir):
 
     if tf.gfile.Exists(val_answer_id):
         rev_answer, start_label, end_label = [], [0] * len(dataset['val']['context']), [0] * len(dataset['val']['context'])
-        for i in range(len(dataset['val']['context'])):
-            rev_label[i] = [0] * len(dataset['val']['context'][i])
-        with tf.gfile.GFile(train_answer_id, mode='r') as a:
+        with tf.gfile.GFile(val_answer_id, mode='r') as a:
             rev_answer.extend(a.readlines())
         rev_answer = [line.strip('\n').split() for line in rev_answer]
         rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
-        assert len(rev_answer) == len(rev_label)
+        assert len(rev_answer) == len(start_label) == len(end_label)
         for i in range(len(rev_answer)):
-            start_label[i][rev_answer[i][0]] = 1
-            end_label[i][rev_answer[i][1]] = 1
+            start_label[i] = rev_answer[i][0]
+            end_label[i] = rev_answer[i][1]
         # Using 1 to mark Answer and 0 for O
         dataset['val']['answer_start'] = start_label
         dataset['val']['answer_end'] = end_label
     else:
-        raise ValueError("Answer span file %s not found.", val_answer_id)
-
-    # train_context_dist = [len(s) for s in dataset['train']['context']]
-    # train_question_dist = [len(s) for s in dataset['train']['question']]
-    # train_answer_dist = [s[1] - s[0] for s in dataset['train']['answer']]
-
-    # val_context_dist = [len(s) for s in dataset['val']['context']]
-    # val_question_dist = [len(s) for s in dataset['val']['question']]
-    # val_answer_dist = [s[1] - s[0] for s in dataset['val']['answer']]
-
-    # plotly.tools.set_credentials_file(username='jygao', api_key='KlddzCHELSzFjmWDOCq1')
-    # fig1 = plt.figure()
-
-    # plt.hist([train_context_dist, val_context_dist])
-
-    # print(py.plot_mpl(fig1, filename='context length'))
-
-    # fig2 = plt.figure()
-    # plt.hist([train_question_dist, val_question_dist])
-
-    # print(py.plot_mpl(fig2, filename='question length'))
-
-    # fig3 = plt.figure()
-    # plt.hist([train_answer_dist, val_answer_dist])
-    # print(py.plot_mpl(fig3, filename='answer length'))
+        raise ValueError("Answer span file %s not found.", train_answer_id)
     return dataset
 
 def main(_):
