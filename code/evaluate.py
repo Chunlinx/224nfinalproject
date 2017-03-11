@@ -26,21 +26,30 @@ def normalize_answer(s):
 
 
 def f1_score(prediction, ground_truth):
-    prediction_tokens = normalize_answer(prediction).split()
-    ground_truth_tokens = normalize_answer(ground_truth).split()
-    common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+    # prediction_tokens = normalize_answer(prediction).split()
+    # ground_truth_tokens = normalize_answer(ground_truth).split()
+    # common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+    # num_same = sum(common.values())
+    # if num_same == 0:
+    #     return 0
+    # precision = 1.0 * num_same / len(prediction_tokens)
+    # recall = 1.0 * num_same / len(ground_truth_tokens)
+    # f1 = (2 * precision * recall) / (precision + recall)
+    # return f1
+
+    common = Counter(prediction) & Counter(ground_truth)
     num_same = sum(common.values())
     if num_same == 0:
         return 0
-    precision = 1.0 * num_same / len(prediction_tokens)
-    recall = 1.0 * num_same / len(ground_truth_tokens)
+    precision = 1.0 * num_same / len(prediction)
+    recall = 1.0 * num_same / len(ground_truth)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
 
 def exact_match_score(prediction, ground_truth):
-    return (normalize_answer(prediction) == normalize_answer(ground_truth))
-
+    # return (normalize_answer(prediction) == normalize_answer(ground_truth))
+    return prediction == ground_truth
 
 def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     scores_for_ground_truths = []

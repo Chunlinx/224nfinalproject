@@ -10,6 +10,8 @@ from tensorflow.python.platform import gfile
 import numpy as np
 
 from qa_model import Encoder, QASystem, Decoder
+from qa_model import preprocess_dataset
+from qa_util import load_data
 from os.path import join as pjoin
 
 import logging
@@ -76,88 +78,6 @@ def get_normalized_train_dir(train_dir):
     os.symlink(os.path.abspath(train_dir), global_train_dir)
     return global_train_dir
 
-def load_data(data_dir):
-
-    dataset = {'train': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}, 
-               'val': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}}
-
-    train_context_id = data_dir + '/train.ids.context'
-    val_context_id = data_dir + '/val.ids.context'
-    train_question_id = data_dir + '/train.ids.question'
-    val_question_id = data_dir + '/val.ids.question'
-    # Labels for training/validation
-    train_answer_id = data_dir + '/train.span'
-    val_answer_id = data_dir + '/val.span'
-
-    if tf.gfile.Exists(train_context_id):
-        rev_context = []
-        with tf.gfile.GFile(train_context_id, mode='r') as c:
-            rev_context.extend(c.readlines())
-        rev_context = [line.strip('\n').split() for line in rev_context]
-        dataset['train']['context'] = [[int(s) for s in line] for line in rev_context]
-    else:
-        raise ValueError("Context file %s not found.", train_context_id)
-
-    if tf.gfile.Exists(train_question_id):
-        rev_question = []
-        with tf.gfile.GFile(train_question_id, mode='r') as q:
-            rev_question.extend(q.readlines())
-        rev_question = [line.strip('\n').split() for line in rev_question]
-        dataset['train']['question'] = [[int(s) for s in line] for line in rev_question]
-    else:
-        raise ValueError("Question file %s not found.", train_question_id)
-
-    if tf.gfile.Exists(train_answer_id):
-        rev_answer, start_label, end_label = [], [0] * len(dataset['train']['context']), [0] * len(dataset['train']['context'])
-        with tf.gfile.GFile(train_answer_id, mode='r') as a:
-            rev_answer.extend(a.readlines())
-        rev_answer = [line.strip('\n').split() for line in rev_answer]
-        rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
-        assert len(rev_answer) == len(start_label) == len(end_label)
-        for i in range(len(rev_answer)):
-            start_label[i] = rev_answer[i][0]
-            end_label[i] = rev_answer[i][1]
-        # Using 1 to mark Answer and 0 for O
-        dataset['train']['answer_start'] = start_label
-        dataset['train']['answer_end'] = end_label
-    else:
-        raise ValueError("Answer span file %s not found.", train_answer_id)
-
-    if tf.gfile.Exists(val_context_id):
-        rev_context = []
-        with tf.gfile.GFile(val_context_id, mode='r') as c:
-            rev_context.extend(c.readlines())
-        rev_context = [line.strip('\n').split() for line in rev_context]
-        dataset['val']['context'] = [[int(s) for s in line] for line in rev_context]
-    else:
-        raise ValueError("Context file %s not found.", val_context_id)
-
-    if tf.gfile.Exists(val_question_id):
-        rev_question = []
-        with tf.gfile.GFile(val_question_id, mode='r') as q:
-            rev_question.extend(q.readlines())
-        rev_question = [line.strip('\n').split() for line in rev_question]
-        dataset['val']['question'] = [[int(s) for s in line] for line in rev_question]
-    else:
-        raise ValueError("Question file %s not found.", val_question_id)
-
-    if tf.gfile.Exists(val_answer_id):
-        rev_answer, start_label, end_label = [], [0] * len(dataset['val']['context']), [0] * len(dataset['val']['context'])
-        with tf.gfile.GFile(val_answer_id, mode='r') as a:
-            rev_answer.extend(a.readlines())
-        rev_answer = [line.strip('\n').split() for line in rev_answer]
-        rev_answer = [(int(s), int(e)) for (s, e) in rev_answer]
-        assert len(rev_answer) == len(start_label) == len(end_label)
-        for i in range(len(rev_answer)):
-            start_label[i] = rev_answer[i][0]
-            end_label[i] = rev_answer[i][1]
-        # Using 1 to mark Answer and 0 for O
-        dataset['val']['answer_start'] = start_label
-        dataset['val']['answer_end'] = end_label
-    else:
-        raise ValueError("Answer span file %s not found.", train_answer_id)
-    return dataset
-
 def main(_):
 
     # Do what you need to load datasets from FLAGS.data_dir
@@ -167,7 +87,6 @@ def main(_):
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
-
     encoder = Encoder(size=FLAGS.state_size, vocab_dim=FLAGS.embedding_size)
     decoder = Decoder(output_size=FLAGS.output_size)
 
@@ -187,9 +106,11 @@ def main(_):
         initialize_model(sess, qa, load_train_dir)
 
         save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        qa.train(sess, dataset, save_train_dir)
+        qa.train(sess, dataset, rev_vocab, save_train_dir)
 
-        qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)
+        qa.evaluate_answer(sess, preprocess_dataset(dataset['train'], FLAGS.output_size, 
+            FLAGS.question_size), preprocess_dataset(dataset['val'], FLAGS.output_size,
+            FLAGS.question_size), rev_vocab, FLAGS.evaluate, log=True)
 
 if __name__ == "__main__":
     tf.app.run()

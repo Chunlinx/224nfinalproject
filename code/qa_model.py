@@ -11,6 +11,7 @@ import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
 
 from qa_data import PAD_ID
+from qa_util import preprocess_dataset, get_minibatch
 from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
@@ -24,50 +25,6 @@ def get_optimizer(opt):
     else:
         assert (False)
     return optfn
-
-def pad_sequence(sequences, max_length):
-    """
-    Given a list of sequences of word ids, pad each sequence to the 
-    desired length or truncate each sequence to max length
-    """
-    padded, effective_len = [], []
-    for seq in sequences:
-        pad_len = max_length - len(seq)
-        effective_len.append(len(seq))
-        if pad_len <= 0:
-            padded.append(seq[:max_length])
-        else:
-            padded.append(seq + [PAD_ID] * pad_len)
-    return np.array(padded), np.array(effective_len)
-
-def preprocess_dataset(dataset, context_len, question_len):
-
-    context_, question_, a_s_, a_e_ = dataset['context'], \
-        dataset['question'], dataset['answer_start'], dataset['answer_end']
-    context_padded = pad_sequence(context_, context_len)
-    question_padded = pad_sequence(question_, question_len) 
-    assert len(context_padded[0]) == len(question_padded[1])
-    return [context_padded, question_padded, a_s_, a_e_]
-
-def get_minibatch(data, batch_size):
-    """
-    Given a complete dataset represented as dict, return the 
-    batch sized data with shuffling as ((context, question), label)
-    """
-    def minibatch(data_mini, batch_idx):
-        # Return both data and seq_len_vec
-        return [data_mini[0][batch_idx], data_mini[1][batch_idx]]
-
-    data_size = len(data[0][0])
-    indices = np.arange(data_size)
-    np.random.shuffle(indices)
-
-    for i in np.arange(0, data_size, batch_size):
-        batch_indices = indices[i: i + batch_size]
-        # Treat differently for data with mask and labels
-        res = [minibatch(d, batch_indices) for d in data[:2]] + \
-            [np.array(d)[batch_indices] for d in data[2:]]
-        yield res
 
 class Encoder(object):
     def __init__(self, size, vocab_dim):
@@ -371,7 +328,7 @@ class QASystem(object):
 
         return valid_cost
 
-    def evaluate_answer(self, session, dataset, sample=100, log=False):
+    def evaluate_answer(self, session, dataset_train, dataset_val, vocab, sample=100, log=False):
         """
         Evaluate the model's performance using the harmonic mean of F1 and Exact Match (EM)
         with the set of true answer labels
@@ -386,26 +343,57 @@ class QASystem(object):
         :param log: whether we print to std out stream
         :return:
         """
+        # Sample each for half of total samples
+        def list_choice(lst, indices):
+            return [lst[i] for i in indices]
 
-        f1 = f1_score()
-        em = exact_match_score()
+        f1, em = 0., 0.
+        context_padded_train_, question_padded_train_, \
+            a_s_train_, a_e_train_ = dataset_train
 
-        indices = np.random.choice(sample)
-        x = zip()
+        context_padded_val_, question_padded_val_, \
+            a_s_val_, a_e_val_ = dataset_val
+
+        train_sample_idx = np.random.choice(np.arange(len(a_s_train_)), int(sample / 2), replace=False)
+        val_sample_idx = np.random.choice(np.arange(len(a_e_val_)), sample - int(sample / 2), replace=False)
+
+        context_train, context_train_len = context_padded_train_
+        context_val, context_val_len = context_padded_val_
+
+        query_train, query_train_len = question_padded_train_
+        query_val, query_val_len = question_padded_val_
+
+        context = (list_choice(context_train, train_sample_idx) + list_choice(context_val, val_sample_idx), 
+            list_choice(context_train_len, train_sample_idx) + list_choice(context_val_len, val_sample_idx))
+        
+        query = (list_choice(query_train, train_sample_idx) + list_choice(query_val, val_sample_idx), 
+            list_choice(query_train_len, train_sample_idx) + list_choice(query_val_len, val_sample_idx))
+
+        ans_label = zip(list_choice(a_s_train_, train_sample_idx) + list_choice(a_s_val_, val_sample_idx), 
+            list_choice(a_e_train_, train_sample_idx) + list_choice(a_e_val_, val_sample_idx))
+
+        ground_truth = [context[0][i][ans_label[i][0]: ans_label[i][1] + 1] for i in range(len(context[0]))]
+    
+        print(context[0][0])        
+        print(ground_truth)
+        # Get the model back
         saver = tf.train.Saver()
-        checkpoints = saver.last_checkpoints()
-        saver.restore(session, checkpoints[-1])
-        for p, q in zip(context, question):
-            a_s, a_e = self.answer(session, p, q)
-            answer = p[a_s: a_e + 1]
-            f1_score()
+        # Use the last checkpoint
+        # saver.restore(session, saver.last_checkpoints[-1])
 
+        for i, (p, q) in enumerate(zip(context, query)):
+            a_s, a_e = self.answer(session, (p, q))
+            answer = p[0][a_s: a_e + 1]
+            f1 += f1_score(answer, ground_truth[i])
+            em += exact_match_score(answer, ground_truth[i])
+        f1 /= i + 1
+        em /= i + 1
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
         return f1, em
 
-    def train(self, session, dataset, save_train_dir):
+    def train(self, session, dataset, vocab, save_train_dir):
         """
         Implement main training loop
 
@@ -429,6 +417,9 @@ class QASystem(object):
         """
         train_data = preprocess_dataset(dataset['train'], 
             self.context_length, self.question_length)
+        val_data = preprocess_dataset(dataset['val'],
+            self.context_length, self.question_length)
+
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
         for epoch in range(FLAGS.epochs):
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
@@ -437,16 +428,17 @@ class QASystem(object):
                 a_e_batch = batch[3]
                 # Not annealing at this point yet
                 # Return loss and gradient probably
-                loss, _ = self.optimize(session, (batch[0], batch[1]), 
+                train_loss, _ = self.optimize(session, (batch[0], batch[1]), 
                     (a_s_batch, a_e_batch))
-                print(loss, i)
+                print('Epoch {epoch}, {i}th batch: training loss {train_loss}')
 
-                # Save model here 
+            # Save model here for each epoch
             saver.save(session, FLAGS.train_dir, global_step=epoch)
-            val_loss = self.validate(session, preprocess_dataset(dataset['val']))
+            val_loss = self.validate(session, val_data)
+            print('Epoch {epoch}, validation loss {val_loss}')
 
-            self.evaluate_answer(session, data, a) # at the end of epoch
-            self.evaluate_answer(session, data_val, a)
+            # at the end of epoch
+            self.evaluate_answer(session, train_data, val_data, vocab, FLAGS.evaluate) 
 
         # some free code to print out number of parameters in your model
         # it's always good to check!
