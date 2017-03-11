@@ -114,7 +114,7 @@ def get_minibatch(data, batch_size):
     Given a complete dataset represented as dict, return the 
     batch sized data with shuffling as ((context, question), label)
     """
-    def minibatch(data_mini, batch_idx):
+    def minibatch_helper(data_mini, batch_idx):
         # Return both data and seq_len_vec
         return [data_mini[0][batch_idx], data_mini[1][batch_idx]]
 
@@ -125,7 +125,7 @@ def get_minibatch(data, batch_size):
     for i in np.arange(0, data_size, batch_size):
         batch_indices = indices[i: i + batch_size]
         # Treat differently for data with mask and labels
-        res = [minibatch(d, batch_indices) for d in data[:2]] + \
+        res = [minibatch_helper(d, batch_indices) for d in data[:2]] + \
             [np.array(d)[batch_indices] for d in data[2:]]
         yield res
 

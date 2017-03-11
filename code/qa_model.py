@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import time
 import logging
+import random
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -344,15 +345,13 @@ class QASystem(object):
         :return:
         """
         # Sample each for half of total samples
-        def list_choice(lst, indices):
-            return [lst[i] for i in indices]
-
         f1, em = 0., 0.
         context_padded_train_, question_padded_train_, \
             a_s_train_, a_e_train_ = dataset_train
 
         context_padded_val_, question_padded_val_, \
             a_s_val_, a_e_val_ = dataset_val
+        # Context, query, ans labels are read correctly
 
         train_sample_idx = np.random.choice(np.arange(len(a_s_train_)), int(sample / 2), replace=False)
         val_sample_idx = np.random.choice(np.arange(len(a_e_val_)), sample - int(sample / 2), replace=False)
@@ -363,33 +362,31 @@ class QASystem(object):
         query_train, query_train_len = question_padded_train_
         query_val, query_val_len = question_padded_val_
 
-        context = (list_choice(context_train, train_sample_idx) + list_choice(context_val, val_sample_idx), 
-            list_choice(context_train_len, train_sample_idx) + list_choice(context_val_len, val_sample_idx))
-        
-        query = (list_choice(query_train, train_sample_idx) + list_choice(query_val, val_sample_idx), 
-            list_choice(query_train_len, train_sample_idx) + list_choice(query_val_len, val_sample_idx))
+        merged_data = [(context_train[i], context_train_len[i], 
+            query_train[i], query_train_len[i], a_s_train_[i], a_e_train_[i]) for i in range(len(a_s_train_))]\
+                + [(context_val[i], context_val_len[i], query_val[i], 
+                    query_val_len[i], a_s_val_[i], a_e_val_[i]) for i in range(len(a_e_val_))]
 
-        ans_label = zip(list_choice(a_s_train_, train_sample_idx) + list_choice(a_s_val_, val_sample_idx), 
-            list_choice(a_e_train_, train_sample_idx) + list_choice(a_e_val_, val_sample_idx))
+        selected_data = random.sample(merged_data, sample)
+        feed_data = [((np.reshape(tp[0], (1, self.context_length)), np.reshape(tp[1], (1,))), 
+            (np.reshape(tp[2], (1, self.question_length)), np.reshape(tp[3], (1,))), 
+                tp[0][tp[4]: tp[5] + 1]) for tp in selected_data]
+        ground_truth = [d[2].tolist() for d in feed_data]
 
-        ground_truth = [context[0][i][ans_label[i][0]: ans_label[i][1] + 1] for i in range(len(context[0]))]
-    
-        print(context[0][0])        
-        print(ground_truth)
         # Get the model back
         saver = tf.train.Saver()
+
         # Use the last checkpoint
         # saver.restore(session, saver.last_checkpoints[-1])
+        for i, d in enumerate(feed_data):
+            a_s, a_e = self.answer(session, (d[0], d[1]))
+            answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
+            f1 += f1_score(answer, ground_truth[i]) / sample
+            if exact_match_score(answer, ground_truth[i]):
+                em += 1. / sample
 
-        for i, (p, q) in enumerate(zip(context, query)):
-            a_s, a_e = self.answer(session, (p, q))
-            answer = p[0][a_s: a_e + 1]
-            f1 += f1_score(answer, ground_truth[i])
-            em += exact_match_score(answer, ground_truth[i])
-        f1 /= i + 1
-        em /= i + 1
         if log:
-            logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
+            logging.info("F1: {}, EM: {}%, for {} samples".format(f1, em * 100, sample))
 
         return f1, em
 
