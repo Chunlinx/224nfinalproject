@@ -33,8 +33,10 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-        self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
-        self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
+        self.forward_cell = tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(self.size),
+            output_keep_prob=1 - FLAGS.dropout)
+        self.backward_cell = tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(self.size),
+            output_keep_prob=1 - FLAGS.dropout)
 
     def encode(self, inputs, seq_len_vec, encoder_state_input, scope=''):
         """
