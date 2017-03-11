@@ -364,3 +364,11 @@ Created model with fresh parameters.
 Num params: 13806200
 Number of params: 13806200 (retreival took 1.368255 secs)
 F1: 0.0, EM: 0.0%, for 100 samples
+Created model with fresh parameters.
+Num params: 13806200
+Created model with fresh parameters.
+Num params: 13806200
+Created model with fresh parameters.
+Num params: 2244900
+Created model with fresh parameters.
+Num params: 2244900

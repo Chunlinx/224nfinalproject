@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, datetime
 import logging
 import random
+import os
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -158,7 +159,7 @@ class QASystem(object):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
+        self.embeddings = tf.constant(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         self.context_length = FLAGS.output_size
         self.question_length = FLAGS.question_size
 
@@ -251,10 +252,8 @@ class QASystem(object):
         input_feed = {}
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
-        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 0, 
-            tf.app.flags.FLAGS.output_size)
-        input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0,
-            tf.app.flags.FLAGS.question_size)
+        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 0, FLAGS.output_size)
+        input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0, FLAGS.question_size)
         input_feed[self.answer_start_label_placeholder] = train_y[0]
         input_feed[self.answer_end_label_placeholder] = train_y[1]
 
@@ -329,7 +328,7 @@ class QASystem(object):
 
         return valid_cost
 
-    def evaluate_answer(self, session, dataset_train, dataset_val, vocab, sample=100, log=False):
+    def evaluate_answer(self, session, dataset_train, dataset_val, sample=100, log=False):
         """
         Evaluate the model's performance using the harmonic mean of F1 and Exact Match (EM)
         with the set of true answer labels
@@ -377,7 +376,7 @@ class QASystem(object):
         saver = tf.train.Saver()
 
         # Use the last checkpoint
-        # saver.restore(session, saver.last_checkpoints[-1])
+        saver.restore(session, saver.last_checkpoints[-1])
         for i, d in enumerate(feed_data):
             a_s, a_e = self.answer(session, (d[0], d[1]))
             answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
@@ -390,7 +389,7 @@ class QASystem(object):
 
         return f1, em
 
-    def train(self, session, dataset, vocab, save_train_dir):
+    def train(self, session, dataset, save_train_dir):
         """
         Implement main training loop
 
@@ -427,15 +426,19 @@ class QASystem(object):
                 # Return loss and gradient probably
                 train_loss, _ = self.optimize(session, (batch[0], batch[1]), 
                     (a_s_batch, a_e_batch))
-                print('Epoch {epoch}, {i}th batch: training loss {train_loss}')
+                print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
 
             # Save model here for each epoch
-            saver.save(session, FLAGS.train_dir, global_step=epoch)
+            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.now())
+            model_path = results_path + "model.weights/"
+            if not os.path.exists(model_path):
+                os.makedirs(model_path)
+            saver.save(sess, model_path, global_step=epoch)
             val_loss = self.validate(session, val_data)
-            print('Epoch {epoch}, validation loss {val_loss}')
+            print('Epoch {}, validation loss {}'.format(epoch, val_loss))
 
             # at the end of epoch
-            self.evaluate_answer(session, train_data, val_data, vocab, FLAGS.evaluate) 
+            self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate) 
 
         # some free code to print out number of parameters in your model
         # it's always good to check!
