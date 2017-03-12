@@ -65,6 +65,14 @@ class Encoder(object):
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return outputs, final_state 
 
+    # def encode_w_attn(self, inputs, seq_len_vec, prev_states, scope=''):
+
+    #     G = [0] * self.size
+    #     with vs.variable_scope(scope, True):
+
+    #         for i in xrange(self.size):
+
+
     # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
     #     self.attn_cell = AttnGRUCell(self.size, prev_states)
     #     with vs.variable_scope(scope, reuse):
@@ -94,17 +102,6 @@ class Decoder(object):
         with vs.variable_scope('a_e', True):
             a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
-
-# class AttnGRUCell(rnn_cell.GRUCell):
-
-#     def __init__():
-
-#         pass
-
-#     def __call__():
-
-#         pass
-
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -163,13 +160,15 @@ class QASystem(object):
             q_h[0], q_h[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
+        H_p, H_q = q_h[0].h, q_h[1].h
+        
         # Concatenating hidden states
         mixed_q_h = tf.concat([q_h[0].h, q_h[1].h], 1)
         mixed_c_h = tf.concat([c_h[0].h, c_h[1].h], 1)
 
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_c_h)
-
+       
     def setup_loss(self):
         """
         Set up your loss computation here

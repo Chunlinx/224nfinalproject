@@ -129,11 +129,6 @@ def get_minibatch(data, batch_size):
             [np.array(d)[batch_indices] for d in data[2:]]
         yield res
 
-def extract_answer_ids():
-
-	pass
-
-	
 def map_id_to_words():
 	pass
 
