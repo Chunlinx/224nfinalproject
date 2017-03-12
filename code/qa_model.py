@@ -161,14 +161,14 @@ class QASystem(object):
             bw_dropout=self.bw_dropout_placeholder)
 
         H_p, H_q = q_h[0].h, q_h[1].h
-        
+
         # Concatenating hidden states
         mixed_q_h = tf.concat([q_h[0].h, q_h[1].h], 1)
         mixed_c_h = tf.concat([c_h[0].h, c_h[1].h], 1)
 
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_c_h)
-       
+
     def setup_loss(self):
         """
         Set up your loss computation here
@@ -393,7 +393,7 @@ class QASystem(object):
                 print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
 
             # Save model here for each epoch
-            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.now())
+            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
             model_path = results_path + "model.weights/"
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
