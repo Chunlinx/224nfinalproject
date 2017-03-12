@@ -34,12 +34,11 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-        self.forward_cell = tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(self.size),
-            output_keep_prob=1 - FLAGS.dropout)
-        self.backward_cell = tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(self.size),
-            output_keep_prob=1 - FLAGS.dropout)
+        self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
+        self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
 
-    def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope=''):
+    def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope='', 
+        fw_dropout=1, bw_dropout=1):
         """
         In a generalized encode function, you pass in your inputs,
         masks, and an initial hidden state input into this function.
@@ -56,8 +55,9 @@ class Encoder(object):
         """
         with vs.variable_scope(scope, True):
             (fw_out, bw_out), final_state = \
-                tf.nn.bidirectional_dynamic_rnn(self.forward_cell, self.backward_cell, 
-                    inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
+                tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(self.forward_cell, 
+                    output_keep_prob=fw_dropout), tf.contrib.rnn.DropoutWrapper(self.backward_cell,
+                    output_keep_prob=bw_dropout), inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
                         initial_state_fw=init_fw_encoder_state, 
                         initial_state_bw=init_bw_encoder_state)
 
@@ -136,8 +136,8 @@ class QASystem(object):
             name='a_s_label')
         self.answer_end_label_placeholder = tf.placeholder(tf.int32, (None,),
             name='a_e_label')
-        self.dropout_placeholder = tf.placeholder(tf.float32, (), name='dropout')
-
+        self.fw_dropout_placeholder = tf.placeholder(tf.float32, (), name='fw_dropout')
+        self.bw_dropout_placeholder = tf.placeholder(tf.float32, (), name='bw_dropout')
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
             self.setup_embeddings()
@@ -157,9 +157,11 @@ class QASystem(object):
         # put the network together (combine add loss, etc)
 
         q_o, q_h = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
-            None, None, scope='question_encode')
+            None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
+            bw_dropout=self.bw_dropout_placeholder)
         c_o, c_h = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
-            q_h[0], q_h[1], scope='context_encode')
+            q_h[0], q_h[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
+            bw_dropout=self.bw_dropout_placeholder)
 
         # Concatenating hidden states
         mixed_q_h = tf.concat([q_h[0].h, q_h[1].h], 1)
@@ -214,7 +216,8 @@ class QASystem(object):
         input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0, FLAGS.question_size)
         input_feed[self.answer_start_label_placeholder] = train_y[0]
         input_feed[self.answer_end_label_placeholder] = train_y[1]
-
+        input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
+        input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
         # Gradient norm
         output_feed = [self.loss, self.train_op]
         outputs = session.run(output_feed, input_feed)
@@ -236,6 +239,8 @@ class QASystem(object):
         input_feed[self.question_mask_placeholder] = valid_question[1]
         input_feed[self.answer_start_label_placeholder] = valid_y[0]
         input_feed[self.answer_end_label_placeholder] = valid_y[1]
+        input_feed[self.fw_dropout_placeholder] = 1.
+        input_feed[self.bw_dropout_placeholder] = 1.
 
         output_feed = [self.loss]
         loss = session.run(output_feed, input_feed)
@@ -255,6 +260,8 @@ class QASystem(object):
         input_feed[self.question_placeholder] = test_x[1][0]
         input_feed[self.context_mask_placeholder] = test_x[0][1]
         input_feed[self.question_mask_placeholder] = test_x[1][1]
+        input_feed[self.fw_dropout_placeholder] = 1.
+        input_feed[self.bw_dropout_placeholder] = 1.
 
         output_feed = [self.a_s, self.a_e]
         outputs = session.run(output_feed, input_feed)
