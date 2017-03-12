@@ -11,6 +11,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 
 from qa_data import PAD_ID
 from qa_util import preprocess_dataset, get_minibatch
@@ -38,7 +39,7 @@ class Encoder(object):
         self.backward_cell = tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(self.size),
             output_keep_prob=1 - FLAGS.dropout)
 
-    def encode(self, inputs, seq_len_vec, encoder_state_input, scope=''):
+    def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope=''):
         """
         In a generalized encode function, you pass in your inputs,
         masks, and an initial hidden state input into this function.
@@ -54,16 +55,15 @@ class Encoder(object):
                  or both.
         """
         with vs.variable_scope(scope, True):
-            ((fw_out, bw_out), (fw_out_state, bw_out_state)) = \
+            (fw_out, bw_out), final_state = \
                 tf.nn.bidirectional_dynamic_rnn(self.forward_cell, self.backward_cell, 
                     inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
-                        initial_state_fw=encoder_state_input, 
-                        initial_state_bw=encoder_state_input)
-   
-        last_output = tf.concat([fw_out[-1], bw_out[-1]], 1)
-        last_output_state = tf.concat([fw_out_state[-1], bw_out_state[-1]], 1)
+                        initial_state_fw=init_fw_encoder_state, 
+                        initial_state_bw=init_bw_encoder_state)
 
-        return last_output, last_output_state #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
+        outputs = tf.concat([fw_out, bw_out], 1)
+        #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
+        return outputs, final_state 
 
     # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
     #     self.attn_cell = AttnGRUCell(self.size, prev_states)
@@ -88,54 +88,12 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        # h_q, h_p : 2-d question / paragraph encoding
-
         # Linear mix: h_q * W1 + h_p * W2 + b
-        a_s = _linear([h_q, h_c], self.output_size, True, scope='a_s')
-        a_e = _linear([h_q, h_c], self.output_size, True, scope='a_e')
+        with vs.variable_scope('a_s', True):
+            a_s = _linear([h_q, h_c], self.output_size, True)
+        with vs.variable_scope('a_e', True):
+            a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
-
-def _linear(args, output_size, bias, bias_start=0.0, scope=None):
-    """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
-      Args:
-        args: a 2D Tensor or a list of 2D, batch x n, Tensors.
-        output_size: int, second dimension of W[i].
-        bias: boolean, whether to add a bias term or not.
-        bias_start: starting value to initialize the bias; 0 by default.
-        scope: VariableScope for the created subgraph; defaults to "Linear".
-      Returns:
-        A 2D Tensor with shape [batch x output_size] equal to
-        sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-      Raises:
-        ValueError: if some of the arguments has unspecified or wrong shape.
-      """
-    # if args is None or (nest.is_sequence(args) and not args):
-    #     raise ValueError("`args` must be specified")
-    # if not nest.is_sequence(args):
-    #     args = [args]
-
-    # Calculate the total size of arguments on dimension 1.
-    total_arg_size = 0
-    shapes = [a.get_shape().as_list() for a in args]
-    for shape in shapes:
-        if len(shape) != 2:
-            raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
-        if not shape[1]:
-            raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
-        else:
-          total_arg_size += shape[1]
-
-    # Now the computation.
-    with vs.variable_scope(scope or "Linear"):
-        matrix = vs.get_variable("Matrix", [total_arg_size, output_size])
-        if len(args) == 1:
-            res = tf.matmul(args[0], matrix)
-        else:
-            res = tf.matmul(tf.concat(args, 1), matrix)
-        if not bias:
-            return res
-        bias_term = vs.get_variable("Bias", [output_size])
-    return res + bias_term
 
 # class AttnGRUCell(rnn_cell.GRUCell):
 
@@ -164,8 +122,6 @@ class QASystem(object):
         self.embeddings = tf.constant(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         self.context_length = FLAGS.output_size
         self.question_length = FLAGS.question_size
-
-        # FLAGS.batch_size
 
         # ==== set up placeholder tokens ========
         self.context_placeholder = tf.placeholder(tf.int32, (None, self.context_length),
@@ -201,16 +157,16 @@ class QASystem(object):
         # put the network together (combine add loss, etc)
 
         q_o, q_h = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
-            None, scope='question_encode')
-
-        related = _linear([q_h], FLAGS.state_size, True, scope='question_decode')
-
+            None, None, scope='question_encode')
         c_o, c_h = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
-            tf.contrib.rnn.LSTMStateTuple(related, related), 
-                scope='context_encode')   # tf.contrib.rnn.LSTMStateTuple(q_h, q_o)
+            q_h[0], q_h[1], scope='context_encode')
+
+        # Concatenating hidden states
+        mixed_q_h = tf.concat([q_h[0].h, q_h[1].h], 1)
+        mixed_c_h = tf.concat([c_h[0].h, c_h[1].h], 1)
 
         # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode(q_h, c_h)
+        self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_c_h)
 
     def setup_loss(self):
         """
