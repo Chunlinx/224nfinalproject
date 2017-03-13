@@ -169,8 +169,7 @@ class QASystem(object):
         H_r_fw, H_r_bw = self.encoder.encode_w_attn(p_fw_o, q_fw_o, 'encode_attn')
         H_r = tf.concat([H_r_fw, H_r_bw], 0)
 
-        self.decoder.decode_w_attn(H_r, 'pntr_net')
-        
+        beta = self.decoder.decode_w_attn(H_r, 'pntr_net')
 
         # Concatenating hidden states
         mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)

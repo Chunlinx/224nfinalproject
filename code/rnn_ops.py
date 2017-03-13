@@ -119,8 +119,9 @@ def answer_pointer_lstm(cell, H_r, state_size, scope):
             o_a, h_k = cell(m, (o_a, h_k))
             h_k = h_k.h     # None, 200
             tf.get_variable_scope().reuse_variables()
-        beta = tf.reshape(tf.stack(beta), [-1, state_size, p_len])
-        print(beta.get_shape().as_list())
+
+        beta = tf.reshape(tf.stack(beta), [-1, p_len, p_len])
+    return beta
 # class MatchLSTMCell(RNNCell):
 
 # 	def __init__(self, state_size, output_size):
