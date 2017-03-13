@@ -83,6 +83,7 @@ class Decoder(object):
     def __init__(self, output_size):
         self.output_size = output_size
         self.state_size = FLAGS.state_size
+        self.answer_cell = tf.contrib.rnn.LSTMCell(self.state_size)
         # self.n_classes = 2  # O or Answer
 
     def decode(self, h_q, h_c):
@@ -103,6 +104,10 @@ class Decoder(object):
         with vs.variable_scope('a_e'):
             a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
+
+    def decode_w_attn(self, H, scope):
+
+        return rnn_ops.answer_pointer_lstm(self.answer_cell, H, self.state_size, scope)
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -162,8 +167,9 @@ class QASystem(object):
             bw_dropout=self.bw_dropout_placeholder)
 
         H_r_fw, H_r_bw = self.encoder.encode_w_attn(p_fw_o, q_fw_o, 'encode_attn')
-        H = tf.concat([H_r_fw, H_r_bw], 0)
+        H_r = tf.concat([H_r_fw, H_r_bw], 0)
 
+        self.decoder.decode_w_attn(H_r, 'pntr_net')
         
 
         # Concatenating hidden states
