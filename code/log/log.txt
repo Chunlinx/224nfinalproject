@@ -384,3 +384,20 @@ Created model with fresh parameters.
 Num params: 2164700
 Created model with fresh parameters.
 Num params: 2164700
+Created model with fresh parameters.
+Num params: 2164700
+Created model with fresh parameters.
+Num params: 2164700
+Created model with fresh parameters.
+Num params: 2164700
+Created model with fresh parameters.
+Num params: 3008345
+Created model with fresh parameters.
+Num params: 3008345
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 2936345
+Created model with fresh parameters.
+Num params: 2936345
+Created model with fresh parameters.
+Num params: 2936345

@@ -16,6 +16,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 from qa_data import PAD_ID
 from qa_util import preprocess_dataset, get_minibatch
 from evaluate import exact_match_score, f1_score
+import rnn_ops
 
 logging.basicConfig(level=logging.INFO)
 FLAGS = tf.app.flags.FLAGS
@@ -37,6 +38,9 @@ class Encoder(object):
         self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
         self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
 
+        self.forward_match_cell = tf.contrib.rnn.LSTMCell(self.size)
+        self.backward_match_cell = tf.contrib.rnn.LSTMCell(self.size)
+
     def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope='', 
         fw_dropout=1, bw_dropout=1):
         """
@@ -53,25 +57,22 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
-        with vs.variable_scope(scope, True):
-            (fw_out, bw_out), final_state = \
+        with vs.variable_scope(scope):
+            (fw_out, bw_out), final_state_tuple = \
                 tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(self.forward_cell, 
                     output_keep_prob=fw_dropout), tf.contrib.rnn.DropoutWrapper(self.backward_cell,
                     output_keep_prob=bw_dropout), inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
                         initial_state_fw=init_fw_encoder_state, 
                         initial_state_bw=init_bw_encoder_state)
-
-        outputs = tf.concat([fw_out, bw_out], 1)
+            tf.get_variable_scope().reuse_variables()
+        # outputs = tf.concat([fw_out, bw_out], 1)
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
-        return outputs, final_state 
+        return fw_out, bw_out, final_state_tuple
 
-    # def encode_w_attn(self, inputs, seq_len_vec, prev_states, scope=''):
+    def encode_w_attn(self, h_p, h_q, scope):
 
-    #     G = [0] * self.size
-    #     with vs.variable_scope(scope, True):
-
-    #         for i in xrange(self.size):
-
+        return rnn_ops.bidirectional_match_lstm(h_p, h_q, self.forward_match_cell, 
+            self.backward_match_cell, FLAGS.question_size, FLAGS.output_size, scope=scope)
 
     # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
     #     self.attn_cell = AttnGRUCell(self.size, prev_states)
@@ -97,9 +98,9 @@ class Decoder(object):
         :return:
         """
         # Linear mix: h_q * W1 + h_p * W2 + b
-        with vs.variable_scope('a_s', True):
+        with vs.variable_scope('a_s'):
             a_s = _linear([h_q, h_c], self.output_size, True)
-        with vs.variable_scope('a_e', True):
+        with vs.variable_scope('a_e'):
             a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
 
@@ -153,21 +154,26 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        q_o, q_h = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
+        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
             None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
-        c_o, c_h = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
-            q_h[0], q_h[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
+        p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
+            q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        H_p, H_q = q_h[0].h, q_h[1].h
+        H_r_fw, H_r_bw = self.encoder.encode_w_attn(p_fw_o, q_fw_o, 'encode_attn')
+        H = tf.concat([H_r_fw, H_r_bw], 0)
+
+        
 
         # Concatenating hidden states
-        mixed_q_h = tf.concat([q_h[0].h, q_h[1].h], 1)
-        mixed_c_h = tf.concat([c_h[0].h, c_h[1].h], 1)
+        mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
+        mixed_p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
+        # mixed_q_h = tf.concat([q_fw_o, q_bw_o], 1)
+        # mixed_c_h = tf.concat([c_fw_o, c_bw_o], 1)
 
         # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_c_h)
+        self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_p_h)
 
     def setup_loss(self):
         """
