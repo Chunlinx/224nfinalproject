@@ -110,8 +110,7 @@ class Decoder(object):
 
         cell = rnn_ops.AnsPtrLSTMCell()
 
-        beta = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
-            h_p, sequence_length=None, dtype=tf.float32)
+        beta = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
 
         flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, p_len * p_len])
