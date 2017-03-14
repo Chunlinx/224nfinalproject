@@ -71,8 +71,8 @@ class Encoder(object):
 
     def encode_w_attn(self, h_p, h_q, scope):
 
-        return rnn_ops.bidirectional_match_lstm(h_p, h_q, self.forward_match_cell, 
-            self.backward_match_cell, FLAGS.question_size, FLAGS.output_size, scope=scope)
+        return rnn_ops.bidirectional_match_lstm(h_p, h_q, self.forward_match_cell,
+            self.backward_match_cell, FLAGS.question_size, FLAGS.output_size, self.size, scope=scope)
 
     # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
     #     self.attn_cell = AttnGRUCell(self.size, prev_states)
