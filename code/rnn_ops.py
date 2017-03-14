@@ -1,22 +1,23 @@
 import tensorflow as tf
-from tensorflow.contrib.rnn import DropoutWrapper, RNNCell, LSTMCell
+from tensorflow.contrib.rnn import DropoutWrapper, RNNCell, LSTMCell, LSTMStateTuple
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-class MatchLSTMCell(tf.contrib.rnn.RNNCell):
+class MatchLSTMCell(LSTMCell):
 
-    def __init__(self, num_units, h_p, h_q, output_size, state_size, batch_size, scope=None):
-        super(MatchLSTMCell, self).__init__()
+    def __init__(self, num_units, h_q, p_len, q_len, batch_size, scope=None):
+        super(MatchLSTMCell, self).__init__(num_units)
         self._cell = LSTMCell(num_units)
-        self.h_p = h_p
-        self.h_q = h_q
-        self._state_size = state_size
-        self._output_size = output_size
+        self._num_units = num_units
+        self._state_size = LSTMStateTuple(num_units, num_units)
+        self.p_len = p_len
+        self.q_len = q_len
+        self._output_size = num_units
         self.batch_size = batch_size
-        self.hidden_states = []
+        self.Hq = tf.reshape(h_q, [-1, num_units])
 
     @property
     def state_size(self):
@@ -27,68 +28,49 @@ class MatchLSTMCell(tf.contrib.rnn.RNNCell):
         return self._output_size
 
     def __call__(self, inputs, state, scope=None):
+
         with tf.variable_scope(scope or self.__class__.__name__, 
-            initializer=tf.contrib.layers.xavier_initializer()):
+                    initializer=tf.contrib.layers.xavier_initializer()):
+            hp, h_r = inputs, state.h
+            Wq = tf.get_variable('Wq', shape=(self._num_units, self._num_units))
+        
+            # None, 200, 45
+            fixed_WH = tf.reshape(tf.matmul(self.Hq, Wq), [-1, 
+                self._num_units, self.p_len])
 
-            Wq = tf.get_variable('Wq', shape=(self._state_size, self._state_size))
-            # Make all of these member variables
-            p_len = self.h_p.get_shape().as_list()[1]
-            q_len = self.h_q.get_shape().as_list()[1]
-            Hq = tf.reshape(self.h_q, [-1, self._state_size])
-
-            # Only use forward Hp, Hq here  # None, 200, 45
-            fixed_WH = tf.reshape(tf.matmul(Hq, Wq), [self.batch_size, self._state_size, q_len])
-
-            h_r = tf.get_variable('h_r', shape=(1, self._state_size))
-
-            # Make h_r_fw/bw to fit batch size as well
-            h_r = tf.reshape(tf.transpose(tf.tile(tf.expand_dims(h_r, 0),
-                [self.batch_size, self._state_size, 1]), perm=[0, 2, 1]), [-1, self._state_size])
-
-            o = tf.get_variable('o', shape=(1, self._state_size))
-
-            hp = tf.reshape(state, [-1, self._state_size])
-            # tf.get_variable_scope().reuse_variables()
             # Use same weights for fw/bw linear
-            with vs.variable_scope('inner') as scope:
-                x = _linear([hp, h_r], self._state_size, True)
-                scope.reuse_variables()
+            with vs.variable_scope('inner'):
+                x = _linear([hp, h_r], self._num_units, True)
 
-            x = tf.transpose(tf.tile(tf.expand_dims(x, 0),
-                                    [self.batch_size, q_len, 1]), perm=[0, 2, 1])
+            x = tf.reshape(tf.tile(tf.expand_dims(x, 0), [self.batch_size,
+                1, self.p_len]), [-1,  self._num_units, self.p_len])
 
             # l x Q     # try linear after debugging
-            G = tf.reshape(tf.tanh(fixed_WH + x), [-1, self._state_size])
+            G = tf.reshape(tf.tanh(fixed_WH + x), [-1, self._num_units])
 
             # Use same weights for fw/bw linear
-            with vs.variable_scope('outer') as scope:
+            with vs.variable_scope('outer'):
                 attn = tf.nn.softmax(_linear(G, self._output_size, True)) # 1 x Q
-                scope.reuse_variables()
 
-            z = tf.concat([hp, tf.matmul(attn, Hq)], 0)
+            z = tf.concat([hp, tf.matmul(attn, self.Hq)], 0)
 
-            # Use different weights here for fw/bw cell
-            o, h_r = self._cell(z, (o, h_r))
+        return self._cell(z, state)
 
-            self.hidden_states.append(h_r)
 
-        return inputs, self._cell(z, state)
-
-def bidirectional_match_lstm(Hp, Hq, fw_cell, bw_cell, output_size, T, num_units, scope):
+def bidirectional_match_lstm(Hp, Hq, fw_cell, bw_cell, p_len, q_len, output_size, num_units):
 
     state_size = fw_cell.state_size.h
     batch_size = tf.shape(Hp)[0]
-    # fw_hidden_states, bw_hidden_states = [0] * T, [0] * T
 
     # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-    fw_cell = MatchLSTMCell(num_units, Hp, Hq, output_size, state_size, batch_size)
-    bw_cell = MatchLSTMCell(num_units, Hp, Hq, output_size, state_size, batch_size)
+    fw_cell = MatchLSTMCell(num_units, Hq, p_len, q_len, output_size, state_size, batch_size)
+    bw_cell = MatchLSTMCell(num_units, Hq, p_len, q_len, output_size, state_size, batch_size)
 
     # @TODO: Define what the inputs are
     inputs = [Hp, Hq]
 
     match_outputs, match_states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
-                                                    Hq, sequence_length=None, dtype=tf.float32)
+                                                    Hp, sequence_length=None, dtype=tf.float32)
 
     # fw_hidden_states = tf.reshape(tf.stack(fw_hidden_states), [-1, state_size, p_len])
     # bw_hidden_states = tf.reshape(tf.stack(bw_hidden_states), [-1, state_size, p_len])

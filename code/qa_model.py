@@ -30,6 +30,7 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
+
 class Encoder(object):
     def __init__(self, size, vocab_dim):
         self.size = size
@@ -38,10 +39,7 @@ class Encoder(object):
         self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
         self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
 
-        self.forward_match_cell = tf.contrib.rnn.LSTMCell(self.size)
-        self.backward_match_cell = tf.contrib.rnn.LSTMCell(self.size)
-
-    def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope='', 
+    def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope='',
         fw_dropout=1, bw_dropout=1):
         """
         In a generalized encode function, you pass in your inputs,
@@ -59,25 +57,28 @@ class Encoder(object):
         """
         with vs.variable_scope(scope):
             (fw_out, bw_out), final_state_tuple = \
-                tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(self.forward_cell, 
+                tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(self.forward_cell,
                     output_keep_prob=fw_dropout), tf.contrib.rnn.DropoutWrapper(self.backward_cell,
-                    output_keep_prob=bw_dropout), inputs, dtype=tf.float32, sequence_length=seq_len_vec,  
-                        initial_state_fw=init_fw_encoder_state, 
+                    output_keep_prob=bw_dropout), inputs, dtype=tf.float32, sequence_length=seq_len_vec,
+                        initial_state_fw=init_fw_encoder_state,
                         initial_state_bw=init_bw_encoder_state)
             tf.get_variable_scope().reuse_variables()
-        # outputs = tf.concat([fw_out, bw_out], 1)
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
-    def encode_w_attn(self, h_p, h_q, scope):
+    def encode_w_attn(self, h_p, h_q, seq_len_vec, scope=''):
 
-        return rnn_ops.bidirectional_match_lstm(h_p, h_q, self.forward_match_cell,
-            self.backward_match_cell, FLAGS.question_size, FLAGS.output_size, self.size, scope=scope)
+        # Define the MatchLSTMCell cell for the bidirectional_match_lstm
+        fw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, FLAGS.output_size, 
+                FLAGS.question_size, self.size, FLAGS.batch_size)
+        bw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, FLAGS.output_size, 
+                FLAGS.question_size, self.size, FLAGS.batch_size)
 
-    # def encode_w_attn(self, inputs, masks, prev_states, scope="", reuse=False):
-    #     self.attn_cell = AttnGRUCell(self.size, prev_states)
-    #     with vs.variable_scope(scope, reuse):
-    #         o, _ = dynamic_rnn(self.attn_cell, inputs, srclen=srclen)
+        # @TODO: Define what the inputs are: h_p
+        outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
+                h_p, sequence_length=seq_len_vec, dtype=tf.float32)
+
+        return outputs, states
 
 class Decoder(object):
     def __init__(self, output_size):
@@ -129,7 +130,7 @@ class QASystem(object):
         # ==== set up placeholder tokens ========
         self.context_placeholder = tf.placeholder(tf.int32, (None, self.context_length),
             name='context_input')
-        self.question_placeholder = tf.placeholder(tf.int32, (None, self.question_length), 
+        self.question_placeholder = tf.placeholder(tf.int32, (None, self.question_length),
             name='question_input')
         self.context_mask_placeholder = tf.placeholder(tf.int32, (None,),
             name='context_mask_input')
@@ -159,23 +160,25 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder, 
+        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder,
             None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
         p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        H_r_fw, H_r_bw = self.encoder.encode_w_attn(p_fw_o, q_fw_o, 'encode_attn')
-        H_r = tf.concat([H_r_fw, H_r_bw], 0)
+        _, h_r_tup = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_mask_placeholder, 
+            scope='encode_attn')
+        H_r = tf.concat([h_r_tup[0].h, h_r_tup[1].h], 0)
 
         beta = self.decoder.decode_w_attn(H_r, 'pntr_net')
 
-        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta), 
+        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, self.context_length * self.context_length])
 
         with tf.variable_scope('answer_pointer_s'):
             ans_s = _linear(flat_beta, self.context_length, True)
+
 
         with tf.variable_scope('answer_pointer_e'):
             ans_e = _linear(flat_beta, self.context_length, True)
@@ -183,6 +186,7 @@ class QASystem(object):
         final_a_s = tf.nn.softmax(ans_s)
         final_a_e = tf.nn.softmax(ans_e)
 
+        print(final_a_e.get_shape().as_list())
         # Concatenating hidden states
         # mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
         # mixed_p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
@@ -213,13 +217,13 @@ class QASystem(object):
         """
         with vs.variable_scope("embeddings"):
 
-            # Choosing to use constant            
-            self.context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
-                self.context_placeholder, name='context_embeddings'), 
+            # Choosing to use constant
+            self.context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings,
+                self.context_placeholder, name='context_embeddings'),
                     [-1, self.context_length, FLAGS.embedding_size])
 
-            self.question_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings, 
-                self.question_placeholder, name='question_embeddings'), 
+            self.question_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings,
+                self.question_placeholder, name='question_embeddings'),
                     [-1, self.question_length, FLAGS.embedding_size])
 
     def optimize(self, session, train_x, train_y):
@@ -347,14 +351,14 @@ class QASystem(object):
         query_train, query_train_len = question_padded_train_
         query_val, query_val_len = question_padded_val_
 
-        merged_data = [(context_train[i], context_train_len[i], 
+        merged_data = [(context_train[i], context_train_len[i],
             query_train[i], query_train_len[i], a_s_train_[i], a_e_train_[i]) for i in range(len(a_s_train_))]\
-                + [(context_val[i], context_val_len[i], query_val[i], 
+                + [(context_val[i], context_val_len[i], query_val[i],
                     query_val_len[i], a_s_val_[i], a_e_val_[i]) for i in range(len(a_e_val_))]
 
         selected_data = random.sample(merged_data, sample)
-        feed_data = [((np.reshape(tp[0], (1, self.context_length)), np.reshape(tp[1], (1,))), 
-            (np.reshape(tp[2], (1, self.question_length)), np.reshape(tp[3], (1,))), 
+        feed_data = [((np.reshape(tp[0], (1, self.context_length)), np.reshape(tp[1], (1,))),
+            (np.reshape(tp[2], (1, self.question_length)), np.reshape(tp[3], (1,))),
                 tp[0][tp[4]: tp[5] + 1]) for tp in selected_data]
         ground_truth = [d[2].tolist() for d in feed_data]
 
@@ -397,7 +401,7 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
-        train_data = preprocess_dataset(dataset['train'], 
+        train_data = preprocess_dataset(dataset['train'],
             self.context_length, self.question_length)
         val_data = preprocess_dataset(dataset['val'],
             self.context_length, self.question_length)
@@ -410,7 +414,7 @@ class QASystem(object):
                 a_e_batch = batch[3]
                 # Not annealing at this point yet
                 # Return loss and gradient probably
-                train_loss, _ = self.optimize(session, (batch[0], batch[1]), 
+                train_loss, _ = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
                 print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
 
@@ -424,7 +428,7 @@ class QASystem(object):
             print('Epoch {}, validation loss {}'.format(epoch, val_loss))
 
             # at the end of epoch
-            self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate) 
+            self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
 
         # some free code to print out number of parameters in your model
         # it's always good to check!
