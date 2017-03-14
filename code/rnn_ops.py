@@ -103,10 +103,11 @@ def answer_pointer_lstm(cell, H_r, state_size, scope):
         fixed_VH = tf.reshape(tf.matmul(H_r, V), [batch_size, state_size, p_len])
 
         for i in xrange(p_len):
-            #.get_shape().as_list()
+
             with vs.variable_scope('linear'):
                 x = _linear(h_k, state_size, True)
                 tf.get_variable_scope().reuse_variables()
+
             x = tf.tile(tf.expand_dims(x, 2), [batch_size, 1, p_len])
             F = tf.tanh(fixed_VH + x)   # None, 200, 750
             F = tf.reshape(F, [-1, state_size]) # None, 200
@@ -122,34 +123,35 @@ def answer_pointer_lstm(cell, H_r, state_size, scope):
 
         beta = tf.reshape(tf.stack(beta), [-1, p_len, p_len])
     return beta
-# class MatchLSTMCell(RNNCell):
 
-# 	def __init__(self, state_size, output_size):
-# 		self._cell = LSTMCell(state_size)
-# 		self.state_size = state_size
-# 		self.output_size = output_size
+class MatchLSTMCell(RNNCell):
 
-# 	def state_size(self):
-# 		return self.state_size
+	def __init__(self, state_size, output_size):
+		self._cell = LSTMCell(state_size)
+		self.state_size = state_size
+		self.output_size = output_size
 
-# 	def output_size(self):
-# 		return self.output_size
+	def state_size(self):
+		return self.state_size
+
+	def output_size(self):
+		return self.output_size
 	
-# 	def __call__(self, inputs, state, scope=None):
+	def __call__(self, inputs, state, scope=None):
 
-	 # with tf.variable_scope(scope or self.__class__.__name__):
-  #           c_prev, h_prev = state
-  #           x = tf.slice(inputs, [0, 0], [-1, self.state_size])
-  #           q_mask = tf.slice(inputs, [0, self.state_size], [-1, self.output_size])  # [N, JQ]
-  #           qs = tf.slice(inputs, [0, self.state_size + self.output_size], [-1, -1])
-  #           qs = tf.reshape(qs, [-1, self.output_size, self.state_size])  # [N, JQ, d]
-  #           x_tiled = tf.tile(tf.expand_dims(x, 1), [1, self.output_size, 1])  # [N, JQ, d]
-  #           h_prev_tiled = tf.tile(tf.expand_dims(h_prev, 1), [1, self.output_size, 1])  # [N, JQ, d]
-  #           f = tf.tanh(linear([qs, x_tiled, h_prev_tiled], self.state_size, True, scope='f'))  # [N, JQ, d]
-  #           a = tf.nn.softmax(exp_mask(_linear(f, 1, True, squeeze=True, scope='a'), q_mask))  # [N, JQ]
-  #           q = tf.reduce_sum(qs * tf.expand_dims(a, -1), 1)
-  #           z = tf.concat(1, [x, q])  # [N, 2d]
-  #           return self._cell(z, state)
+    	with tf.variable_scope(scope or self.__class__.__name__):
+            c_prev, h_prev = state
+            x = tf.slice(inputs, [0, 0], [-1, self.state_size])
+            q_mask = tf.slice(inputs, [0, self.state_size], [-1, self.output_size])  # [N, JQ]
+            qs = tf.slice(inputs, [0, self.state_size + self.output_size], [-1, -1])
+            qs = tf.reshape(qs, [-1, self.output_size, self.state_size])  # [N, JQ, d]
+            x_tiled = tf.tile(tf.expand_dims(x, 1), [1, self.output_size, 1])  # [N, JQ, d]
+            h_prev_tiled = tf.tile(tf.expand_dims(h_prev, 1), [1, self.output_size, 1])  # [N, JQ, d]
+            f = tf.tanh(linear([qs, x_tiled, h_prev_tiled], self.state_size, True, scope='f'))  # [N, JQ, d]
+            a = tf.nn.softmax(exp_mask(_linear(f, 1, True, squeeze=True, scope='a'), q_mask))  # [N, JQ]
+            q = tf.reduce_sum(qs * tf.expand_dims(a, -1), 1)
+            z = tf.concat(1, [x, q])  # [N, 2d]
+            return self._cell(z, state)
 
 
 

@@ -171,14 +171,25 @@ class QASystem(object):
 
         beta = self.decoder.decode_w_attn(H_r, 'pntr_net')
 
+        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta), 
+            [-1, self.context_length * self.context_length])
+
+        with tf.variable_scope('answer_pointer_s'):
+            ans_s = _linear(flat_beta, self.context_length, True)
+
+        with tf.variable_scope('answer_pointer_e'):
+            ans_e = _linear(flat_beta, self.context_length, True)
+
+        final_a_s = tf.nn.softmax(ans_s)
+        final_a_e = tf.nn.softmax(ans_e)
+
         # Concatenating hidden states
-        mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
-        mixed_p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
-        # mixed_q_h = tf.concat([q_fw_o, q_bw_o], 1)
-        # mixed_c_h = tf.concat([c_fw_o, c_bw_o], 1)
+        # mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
+        # mixed_p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
 
         # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_p_h)
+        # self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_p_h)
+        self.a_s, self.a_e = final_a_s, final_a_e
 
     def setup_loss(self):
         """
