@@ -41,42 +41,42 @@ class MatchLSTMCell(LSTMCell):
             # Use same weights for fw/bw linear
             with vs.variable_scope('inner'):
                 x = _linear([hp, h_r], self._num_units, True)
-
             x = tf.reshape(tf.tile(tf.expand_dims(x, 0), [self.batch_size,
                 1, self.p_len]), [-1,  self._num_units, self.p_len])
-
-            # l x Q     # try linear after debugging
             G = tf.reshape(tf.tanh(fixed_WH + x), [-1, self._num_units])
 
             # Use same weights for fw/bw linear
             with vs.variable_scope('outer'):
                 attn = tf.nn.softmax(_linear(G, self._output_size, True)) # 1 x Q
-
             z = tf.concat([hp, tf.matmul(attn, self.Hq)], 0)
 
         return self._cell(z, state)
 
+class AnsPtrLSTMCell(LSTMCell):
 
-def bidirectional_match_lstm(Hp, Hq, fw_cell, bw_cell, p_len, q_len, output_size, num_units):
+    def __init__(self, Hr, num_units, output_size, batch_size):
+        super(MatchLSTMCell, self).__init__(num_units)
+        self._cell = LSTMCell(state_size)   #  200
+        self._state_size = LSTMStateTuple(num_units, num_units)
+        self._output_size = num_units   # for linear: l = 200 
+        self.batch_size = batch_size
+        self.H = Hr
 
-    state_size = fw_cell.state_size.h
-    batch_size = tf.shape(Hp)[0]
+    def state_size(self):
+        return self._state_size
 
-    # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-    fw_cell = MatchLSTMCell(num_units, Hq, p_len, q_len, output_size, state_size, batch_size)
-    bw_cell = MatchLSTMCell(num_units, Hq, p_len, q_len, output_size, state_size, batch_size)
+    def output_size(self):
+        return self._output_size
 
-    # @TODO: Define what the inputs are
-    inputs = [Hp, Hq]
+    def __call__(self, inputs, state, scope=None):
 
-    match_outputs, match_states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
-                                                    Hp, sequence_length=None, dtype=tf.float32)
+        with tf.variable_scope(scope or self.__class__.__name__, 
+            initializer=tf.contrib.layers.xavier_initializer()):
 
-    # fw_hidden_states = tf.reshape(tf.stack(fw_hidden_states), [-1, state_size, p_len])
-    # bw_hidden_states = tf.reshape(tf.stack(bw_hidden_states), [-1, state_size, p_len])
+            self.V = tf.get_variable('V', shape=(state_size, 2 * state_size))
+            self.h_k = tf.get_variable('h_k', shape=(1, state_size))
+            self.o_a = tf.get_variable('o_a', shape=(1, state_size))
 
-    # return fw_hidden_states, bw_hidden_states
-    return match_outputs, match_states
 
 def answer_pointer_lstm(cell, H_r, state_size, scope):
 

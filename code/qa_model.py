@@ -66,13 +66,13 @@ class Encoder(object):
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
-    def encode_w_attn(self, h_p, h_q, seq_len_vec, scope=''):
+    def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec, scope=''):
 
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-        fw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, FLAGS.output_size, 
-                FLAGS.question_size, self.size, FLAGS.batch_size)
-        bw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, FLAGS.output_size, 
-                FLAGS.question_size, self.size, FLAGS.batch_size)
+        fw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
+                q_len, self.size, FLAGS.batch_size)
+        bw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
+                q_len, self.size, FLAGS.batch_size)
 
         # @TODO: Define what the inputs are: h_p
         outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
@@ -106,9 +106,28 @@ class Decoder(object):
             a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, scope):
+    def decode_w_attn(self, H, p_len, scope=''):
 
-        return rnn_ops.answer_pointer_lstm(self.answer_cell, H, self.state_size, scope)
+        cell = rnn_ops.AnsPtrLSTMCell()
+
+        beta = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
+            h_p, sequence_length=None, dtype=tf.float32)
+
+        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
+            [-1, p_len * p_len])
+
+        with tf.variable_scope('answer_pointer_s'):
+            ans_s = _linear(flat_beta, p_len, True)
+
+        with tf.variable_scope('answer_pointer_e'):
+            ans_e = _linear(flat_beta, p_len, True)
+
+        final_a_s = tf.nn.softmax(ans_s)
+        final_a_e = tf.nn.softmax(ans_e)
+
+        print(final_a_e.get_shape().as_list())
+
+        return final_a_s, final_a_e
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -167,33 +186,12 @@ class QASystem(object):
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        _, h_r_tup = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_mask_placeholder, 
-            scope='encode_attn')
+        _, h_r_tup = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
+            self.question_length, self.context_mask_placeholder, scope='encode_attn')
         H_r = tf.concat([h_r_tup[0].h, h_r_tup[1].h], 0)
-
-        beta = self.decoder.decode_w_attn(H_r, 'pntr_net')
-
-        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
-            [-1, self.context_length * self.context_length])
-
-        with tf.variable_scope('answer_pointer_s'):
-            ans_s = _linear(flat_beta, self.context_length, True)
-
-
-        with tf.variable_scope('answer_pointer_e'):
-            ans_e = _linear(flat_beta, self.context_length, True)
-
-        final_a_s = tf.nn.softmax(ans_s)
-        final_a_e = tf.nn.softmax(ans_e)
-
-        print(final_a_e.get_shape().as_list())
-        # Concatenating hidden states
-        # mixed_q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
-        # mixed_p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
-
+   
         # This is the predict op
-        # self.a_s, self.a_e = self.decoder.decode(mixed_q_h, mixed_p_h)
-        self.a_s, self.a_e = final_a_s, final_a_e
+        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
 
     def setup_loss(self):
         """
