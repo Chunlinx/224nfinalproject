@@ -108,9 +108,10 @@ class Decoder(object):
 
     def decode_w_attn(self, H, p_len, scope=''):
 
-        cell = rnn_ops.AnsPtrLSTMCell()
+        cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, FLAGS.batch_size, p_len)
 
-        beta = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
+        inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
+        beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
 
         flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, p_len * p_len])
@@ -121,12 +122,9 @@ class Decoder(object):
         with tf.variable_scope('answer_pointer_e'):
             ans_e = _linear(flat_beta, p_len, True)
 
-        final_a_s = tf.nn.softmax(ans_s)
-        final_a_e = tf.nn.softmax(ans_e)
-
-        print(final_a_e.get_shape().as_list())
-
-        return final_a_s, final_a_e
+        #  @TO-DO: p(a_s) x p(a_e)
+        
+        return ans_s, ans_e
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -181,14 +179,14 @@ class QASystem(object):
         q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder,
             None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
+        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        _, h_r_tup = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
+        outputs, _ = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
             self.question_length, self.context_mask_placeholder, scope='encode_attn')
-        H_r = tf.concat([h_r_tup[0].h, h_r_tup[1].h], 0)
-   
+        H_r = tf.concat([outputs[0], outputs[1]], 2)
+
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
 
@@ -199,12 +197,19 @@ class QASystem(object):
         """
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
+
+            # mask = tf.sequence_mask(self.context_mask_placeholder, self.context_length)
+
+            # mask_s = tf.boolean_mask(self.a_s, mask)
+            # mask_e = tf.boolean_mask(self.a_e, mask)
+            # print (mask_s.get_shape().as_list())
             loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_start_label_placeholder,
                 logits=self.a_s)
             loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_end_label_placeholder,
                 logits=self.a_e)
+
             self.loss = tf.reduce_mean(loss_vec_1 + loss_vec_2)
 
     def setup_embeddings(self):
@@ -213,7 +218,6 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("embeddings"):
-
             # Choosing to use constant
             self.context_embed = tf.reshape(tf.nn.embedding_lookup(self.embeddings,
                 self.context_placeholder, name='context_embeddings'),
@@ -409,6 +413,7 @@ class QASystem(object):
 
                 a_s_batch = batch[2]
                 a_e_batch = batch[3]
+
                 # Not annealing at this point yet
                 # Return loss and gradient probably
                 train_loss, _ = self.optimize(session, (batch[0], batch[1]),
