@@ -54,49 +54,28 @@ class MatchLSTMCell(LSTMCell):
 
 class AnsPtrLSTMCell(LSTMCell):
 
-    def __init__(self, Hr, num_units, batch_size, p_len):
-        super(AnsPtrLSTMCell, self).__init__(num_units, num_proj=p_len)
-        self._cell = LSTMCell(num_units)   #  200
-        self._num_units = num_units
-        self._state_size = LSTMStateTuple(num_units, p_len)
-        self._output_size = p_len   # for linear: l = 200
+    def __init__(self, Hr, num_units, output_size, batch_size):
+        super(MatchLSTMCell, self).__init__(num_units)
+        self._cell = LSTMCell(state_size)   #  200
+        self._state_size = LSTMStateTuple(num_units, num_units)
+        self._output_size = num_units   # for linear: l = 200 
         self.batch_size = batch_size
         self.H = Hr
 
-    @property
     def state_size(self):
         return self._state_size
 
-    @property
     def output_size(self):
         return self._output_size
 
     def __call__(self, inputs, state, scope=None):
 
-        with tf.variable_scope(scope or self.__class__.__name__,
+        with tf.variable_scope(scope or self.__class__.__name__, 
             initializer=tf.contrib.layers.xavier_initializer()):
 
-            V = tf.get_variable('V', shape=(self._num_units, 2 * self._num_units))
-
-            fixed_VH = tf.reshape(tf.matmul(tf.reshape(self.H, [-1, self._num_units]), V), 
-                [-1, self._num_units, self._output_size])
-
-            with vs.variable_scope('linear'):
-                x = _linear(state, self._num_units, True)
-
-            print(x.get_shape().as_list())
-
-            x = tf.tile(tf.expand_dims(x, 2), [-1, self._num_units, self._output_size])
-            F = tf.tanh(fixed_VH + x)   # None, 200, 750
-            F = tf.reshape(F, [-1, self._num_units]) # None, 200
-
-            with vs.variable_scope('f_linear'):
-                b_k = tf.nn.softmax(_linear(F, self._output_size, True))
-
-            m = tf.matmul(tf.reshape(self.H, [-1, self._output_size]), tf.reshape(b_k, [self._output_size, -1]))
-            m = tf.reshape(m, [-1, 2 * self._num_units])  # None, 200
-
-        return m, self._cell(m, state)[1]
+            self.V = tf.get_variable('V', shape=(state_size, 2 * state_size))
+            self.h_k = tf.get_variable('h_k', shape=(1, state_size))
+            self.o_a = tf.get_variable('o_a', shape=(1, state_size))
 
 
 def answer_pointer_lstm(cell, H_r, state_size, scope):

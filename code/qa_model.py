@@ -108,12 +108,10 @@ class Decoder(object):
 
     def decode_w_attn(self, H, p_len, scope=''):
 
-        cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, FLAGS.batch_size, p_len)
+        cell = rnn_ops.AnsPtrLSTMCell()
 
-        print(H.get_shape().as_list())
-        beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
+        beta = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
 
-        print(beta.get_shape().as_list())
         flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, p_len * p_len])
 
@@ -123,11 +121,12 @@ class Decoder(object):
         with tf.variable_scope('answer_pointer_e'):
             ans_e = _linear(flat_beta, p_len, True)
 
-        print(ans_e.get_shape().as_list())
-        #  @TO-DO: p(a_s) x p(a_e)
-        
+        final_a_s = tf.nn.softmax(ans_s)
+        final_a_e = tf.nn.softmax(ans_e)
 
-        return a_s, a_e
+        print(final_a_e.get_shape().as_list())
+
+        return final_a_s, final_a_e
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -182,14 +181,14 @@ class QASystem(object):
         q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder,
             None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
+        p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        outputs, _ = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
+        _, h_r_tup = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
             self.question_length, self.context_mask_placeholder, scope='encode_attn')
-        H_r = tf.concat([outputs[0], outputs[1]], 2)
-
+        H_r = tf.concat([h_r_tup[0].h, h_r_tup[1].h], 0)
+   
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
 
