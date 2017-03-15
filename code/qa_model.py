@@ -110,10 +110,9 @@ class Decoder(object):
 
         cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, FLAGS.batch_size, p_len)
 
-        print(H.get_shape().as_list())
-        beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
+        inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
+        beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
 
-        print(beta.get_shape().as_list())
         flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, p_len * p_len])
 
@@ -123,11 +122,10 @@ class Decoder(object):
         with tf.variable_scope('answer_pointer_e'):
             ans_e = _linear(flat_beta, p_len, True)
 
-        print(ans_e.get_shape().as_list())
         #  @TO-DO: p(a_s) x p(a_e)
         
 
-        return a_s, a_e
+        return ans_s, ans_e
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -200,13 +198,18 @@ class QASystem(object):
         """
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
-            loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            loss_s = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_start_label_placeholder,
                 logits=self.a_s)
-            loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            loss_e = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_end_label_placeholder,
                 logits=self.a_e)
-            self.loss = tf.reduce_mean(loss_vec_1 + loss_vec_2)
+            seq_mask = tf.reshape(self.context_mask_placeholder, [1])
+
+            mask = tf.sequence_mask(seq_mask, self.context_length)
+            loss_s = tf.reduce_mean(tf.boolean_mask(loss_s, mask))
+            loss_e = tf.reduce_mean(tf.boolean_mask(loss_e, mask))
+            self.loss = loss_s + loss_e
 
     def setup_embeddings(self):
         """
