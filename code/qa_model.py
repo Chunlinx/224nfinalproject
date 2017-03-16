@@ -108,7 +108,7 @@ class Decoder(object):
 
     def decode_w_attn(self, H, p_len, scope=''):
 
-        cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, FLAGS.batch_size, p_len)
+        cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, p_len)
 
         inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
         beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
@@ -183,16 +183,13 @@ class QASystem(object):
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        # H_p = tf.concat([p_fw_o, p_bw_o], 2)
-        # H_q = tf.concat([q_fw_o, q_bw_o], 2)
-        # outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
-        #     self.question_length, self.context_mask_placeholder, scope='encode_attn')
-        # H_r = tf.concat([outputs[0], outputs[1]], 2)
-        
-        H_r = tf.concat([p_fw_o, p_bw_o], 2)
-        
-        print(H_r.get_shape().as_list(), 'H_r') # None, 750, 400
-        # H_r = tf.ones((FLAGS.batch_size, 750, 400))
+        H_p = tf.concat([p_fw_o, p_bw_o], 2)
+        H_q = tf.concat([q_fw_o, q_bw_o], 2)
+        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
+            self.question_length, self.context_mask_placeholder, scope='encode_attn')
+        H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
+
+        # H_r = tf.concat([p_fw_o, p_bw_o], 2)    
 
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
@@ -206,9 +203,10 @@ class QASystem(object):
         with vs.variable_scope("loss"):
 
             mask = tf.sequence_mask(self.context_mask_placeholder, self.context_length)
-            mask_s = tf.reshape(tf.boolean_mask(self.a_s, mask), [-1, self.context_length])
-            mask_e = tf.reshape(tf.boolean_mask(self.a_e, mask), [-1, self.context_length])
-
+            int_mask = tf.cast(mask, tf.float32)
+            mask_s = self.a_s + tf.log(int_mask)
+            mask_e = self.a_e + tf.log(int_mask)    # None, 750
+     
             loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_start_label_placeholder,
                 logits=mask_s)
@@ -246,8 +244,8 @@ class QASystem(object):
         input_feed[self.question_placeholder] = train_x[1][0]
         input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 0, FLAGS.output_size)
         input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0, FLAGS.question_size)
-        input_feed[self.answer_start_label_placeholder] = train_y[0]
-        input_feed[self.answer_end_label_placeholder] = train_y[1]
+        input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0], 0, self.context_length)
+        input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1], 0, self.context_length)
         input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
         input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
         # Gradient norm

@@ -30,8 +30,15 @@ class MatchLSTMCell(LSTMCell):
         with tf.variable_scope(scope or self.__class__.__name__, 
                     initializer=tf.contrib.layers.xavier_initializer()):
             hp, h_r = inputs, state.h
+
             Wq = tf.get_variable('Wq', shape=(self._num_units, self._num_units))
-        
+            Wp = tf.get_variable('Wp', shape=(self._num_units, self._num_units))
+            Wr = tf.get_variable('Wr', shape=(self._num_units, self._num_units))
+            w = tf.get_variable('w', shape=(self._num_units,))
+            bp = tf.get_variable('bp', shape=(self._num_units,))
+            b = tf.get_variable('b', shape=())
+
+
             # None, 200, 45
             fixed_WH = tf.reshape(tf.matmul(self.Hq, Wq), [-1, 
                 self._num_units, self.p_len])
@@ -57,11 +64,10 @@ class MatchLSTMCell(LSTMCell):
 
 class AnsPtrLSTMCell(LSTMCell):
 
-    def __init__(self, Hr, num_units, batch_size, p_len):
+    def __init__(self, Hr, num_units, p_len):
         super(AnsPtrLSTMCell, self).__init__(num_units)
-        self._cell = LSTMCell(num_units)   #  200
+        self._cell = LSTMCell(num_units)   # 200
         self._output_size = p_len
-        self.batch_size = batch_size
         self.H = Hr     # None, 750, 400
 
     @property
@@ -87,30 +93,17 @@ class AnsPtrLSTMCell(LSTMCell):
             # None, 750, 200
             
             F = tf.tanh(fixed_VH + x)   # None, 750, 200
-
             w = tf.get_variable('w', shape=(self._num_units, 1))
             c = tf.get_variable('c', shape=())
 
-            b_k = tf.nn.softmax(tf.matmul(tf.reshape(F, [-1, self._num_units]), w) + c)
-            b_k = tf.reshape(b_k, [-1, self._output_size])  # None, 750            
+            b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
+                [-1, self._num_units]), w) + c), [-1, self._output_size])
+            # None, 750            
 
-            b_k_m = tf.expand_dims(b_k, 2)
-            m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), b_k_m)
-
-            # m = tf.matmul(b_k, tf.reshape(self.H, [self._output_size, -1]))
-            # m = tf.reshape(m, [-1, 2 * self._num_units])  # None, 400
-            
-            # m = tf.Print(m, [tf.shape(m)], message="m variable")
+            m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), tf.expand_dims(b_k, 2))
             m = tf.reshape(m, [-1, 2 * self._num_units])
-            print(m.get_shape().as_list(), 'm')
-            print(state.h.get_shape().as_list(), 'sh')
-            print(state.c.get_shape().as_list(), 'sc')
-        #TODO: Make sure totally correct
-
-        s, b = self._cell(m, state)
-        print(s.get_shape().as_list(), 'o')
-        print(b.h.get_shape().as_list(), 'bh')
-        return b_k, b#self._cell(m, state)[1]
+        
+        return b_k, self._cell(m, state)[1]
 
 
 
