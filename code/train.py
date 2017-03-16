@@ -17,7 +17,7 @@ from os.path import join as pjoin
 import logging
 
 logging.basicConfig(level=logging.INFO)
-
+tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("fw_dropout", 0.85, "Fraction of units not randomly dropped on foward non-recurrent connections.")
@@ -40,9 +40,9 @@ tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", 
 tf.app.flags.DEFINE_integer("evaluate", 100, "How many samples to evaluate EM and F1 score.")
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_integer("baseline", 0, "1 for running baseline model; 0 for MatchLSTM implementation")
-tf.app.flags.DEFINE_string("model", "boundary", "boundary / sequence")
+tf.app.flags.DEFINE_string("model", "sequence", "boundary / sequence")
 tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
-tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM, 0 for forward only")
+tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 1, "1 for using BiDirect in AnswerPointer LSTM, 0 for forward only")
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):

@@ -75,9 +75,8 @@ class Encoder(object):
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
         fw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
         bw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
-
-        # @TODO: Define what the inputs are: h_p
-        outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
+        with vs.variable_scope(scope):
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
                 h_p, sequence_length=seq_len_vec, dtype=tf.float32)
 
         return outputs, states
@@ -107,16 +106,19 @@ class Decoder(object):
             a_e = _linear([h_q, h_p], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, scope=''):
+    def decode_w_attn(self, H, p_len, seq_len, scope=''):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         
         if FLAGS.bidirectional_answer_pointer:
             fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
             bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
-            # TODO: sequence length
-            beta, _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, 
-                H, dtype=tf.float32, sequence_length=None)
+            # TODO: Make sure this is reusing variables
+            with vs.variable_scope(scope):
+                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, 
+                    H, dtype=tf.float32, sequence_length=seq_len)
+            # simply adding the result from forward and backward
+            beta = beta_fw + beta_bw
         else:
             cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
             beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
@@ -192,8 +194,11 @@ class QASystem(object):
             self.a_s, self.a_e = self.decoder.decode(q_h, p_h)
 
         else:
-            H_p = tf.concat([p_fw_o, p_bw_o], 2) # None, 750, 400
-            H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
+            if FLAGS.bidirectional_preprocess:
+                H_p = tf.concat([p_fw_o, p_bw_o], 2) # None, 750, 400
+                H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
+            else:
+                H_p, H_q = p_fw_o, q_fw_o
 
             # Bidirectional embeddings
             outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
@@ -201,19 +206,15 @@ class QASystem(object):
                 scope='encode_attn')
             H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
             
-            # This is the predict op
+            # These are the predict ops
             if FLAGS.model == 'sequence':
-                beta = self.decoder.decode_w_attn(H_r, self.context_length,
-                    scope='decode_attn')
-
-                # with tf.variable_scope('answer_pointer_s'):
-                #     ans_s = _linear(flat_beta, p_len, True)
-
-                # with tf.variable_scope('answer_pointer_e'):
-                #     ans_e = _linear(flat_beta, p_len , True)
-                
-                # self.a_s, self.a_e = ans_s, ans_e
-                pass
+                # beta: None, 750, 751
+                beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
+                    self.context_mask_placeholder, scope='decode_attn')    
+                #TODO: verify this selection is correct
+                self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
+                # Getting the P + 1 column
+                self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
             
             elif FLAGS.model == 'boundary':
                 self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
@@ -405,10 +406,8 @@ class QASystem(object):
             f1 += f1_score(answer, ground_truth[i]) / sample
             if exact_match_score(answer, ground_truth[i]):
                 em += 1. / sample
-
         if log:
             logging.info("F1: {}, EM: {}%, for {} samples".format(f1, em * 100, sample))
-
         return f1, em
 
     def train(self, session, dataset, save_train_dir):
@@ -450,7 +449,7 @@ class QASystem(object):
                 # Return loss and gradient probably
                 train_loss, _ = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-                # print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
+
                 prog.update(i + 1, [("train loss", train_loss)])
 
             # Save model here for each epoch
@@ -476,3 +475,6 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+
+        

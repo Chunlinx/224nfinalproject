@@ -69,8 +69,7 @@ class AnsPtrLSTMCell(LSTMCell):
         super(AnsPtrLSTMCell, self).__init__(num_units)
         self._cell = LSTMCell(num_units)   # 400
         self._output_size = p_len
-        self.H = Hr     # None, 750, 400
-
+        self.H = tf.concat([Hr, tf.zeros((tf.shape(Hr)[0], 1, 2 * num_units))], 1)
     @property
     def state_size(self):
         return self._state_size
@@ -120,10 +119,12 @@ def _linear_decode(H, num_units, p_len, scope='', span_search=False):
             initializer=tf.contrib.layers.xavier_initializer()):
         b_e = _decode_helper(H, num_units, p_len)
     
-    #  @TO-DO: p(a_s) x p(a_e)
-    if span_search:
-        x = 1
     ans_s, ans_e = b_s, b_e
+    
+    # TO-DO: p(a_s) x p(a_e)
+    if span_search:
+        pass
+    
     return ans_s, ans_e
 
 def _decode_helper(H, num_units, p_len):
