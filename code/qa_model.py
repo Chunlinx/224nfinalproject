@@ -70,8 +70,8 @@ class Encoder(object):
         return fw_out, bw_out, final_state_tuple
 
     def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec,
-            scope='', bidirectional=False):
-        state_size = 2 * self.size if bidirectional else self.size
+            scope=''):
+        state_size = 2 * self.size if FLAGS.bidirectional_preprocess else self.size
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
         fw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
         bw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
@@ -88,7 +88,7 @@ class Decoder(object):
         self.state_size = FLAGS.state_size
         self.answer_cell = tf.contrib.rnn.LSTMCell(self.state_size)
 
-    def decode(self, h_q, h_c):
+    def decode(self, h_q, h_p):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -102,31 +102,30 @@ class Decoder(object):
         """
         # Linear mix: h_q * W1 + h_p * W2 + b
         with vs.variable_scope('a_s'):
-            a_s = _linear([h_q, h_c], self.output_size, True)
+            a_s = _linear([h_q, h_p], self.output_size, True)
         with vs.variable_scope('a_e'):
-            a_e = _linear([h_q, h_c], self.output_size, True)
+            a_e = _linear([h_q, h_p], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, bidirectional=False ,scope=''):
+    def decode_w_attn(self, H, p_len, scope=''):
 
-        state_size = 2 * self.state_size if bidirectional else self.state_size
-        cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
+        state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
+        
+        if FLAGS.bidirectional_answer_pointer:
+            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
+            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
+            # TODO: sequence length
+            beta, _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, 
+                H, dtype=tf.float32, sequence_length=None)
+        else:
+            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
+            beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
+        return beta
 
-        # inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
-        beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
-
-        flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
-            [-1, p_len * p_len])
-
-        with tf.variable_scope('answer_pointer_s'):
-            ans_s = _linear(flat_beta, p_len, True)
-
-        with tf.variable_scope('answer_pointer_e'):
-            ans_e = _linear(flat_beta, p_len, True)
-
-        #  @TO-DO: p(a_s) x p(a_e)
-
-        return ans_s, ans_e
+    def linear_decode(self, H, p_len, scope='', span_search=False):
+        state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
+        return rnn_ops._linear_decode(H, state_size, p_len, scope,
+            span_search)
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -167,7 +166,8 @@ class QASystem(object):
             self.setup_loss()
 
         # ==== set up training/updating procedure ====
-        self.train_op = get_optimizer('adam')(FLAGS.learning_rate).minimize(self.loss)
+        self.train_op = get_optimizer(FLAGS.optimizer)(
+            FLAGS.learning_rate).minimize(self.loss)
 
     def setup_system(self):
         """
@@ -181,25 +181,45 @@ class QASystem(object):
         q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
             self.question_mask_placeholder, None, None, scope='question_encode',
             fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed,
+        p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed,
             self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
             scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        # None, 750, 400
-        H_p = tf.concat([p_fw_o, p_bw_o], 2)
-        # None, 45, 400
-        H_q = tf.concat([q_fw_o, q_bw_o], 2)
+        if FLAGS.baseline:
+            q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
+            p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
+            self.a_s, self.a_e = self.decoder.decode(q_h, p_h)
 
-        # Bidirectional embeddings
-        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
-            self.question_length, self.context_mask_placeholder,
-            scope='encode_attn', bidirectional=True)
-        H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
+        else:
+            H_p = tf.concat([p_fw_o, p_bw_o], 2) # None, 750, 400
+            H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
 
-        # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length,
-            scope='decode_attn', bidirectional=True)
+            # Bidirectional embeddings
+            outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
+                self.question_length, self.context_mask_placeholder,
+                scope='encode_attn')
+            H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
+            
+            # This is the predict op
+            if FLAGS.model == 'sequence':
+                beta = self.decoder.decode_w_attn(H_r, self.context_length,
+                    scope='decode_attn')
+
+                # with tf.variable_scope('answer_pointer_s'):
+                #     ans_s = _linear(flat_beta, p_len, True)
+
+                # with tf.variable_scope('answer_pointer_e'):
+                #     ans_e = _linear(flat_beta, p_len , True)
+                
+                # self.a_s, self.a_e = ans_s, ans_e
+                pass
+            
+            elif FLAGS.model == 'boundary':
+                self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
+                    'answer_pointer_boundary', span_search=True)
+            else:
+                raise NotImplementedError("Only allow boundary model or sequence model")
 
     def setup_loss(self):
         """
@@ -438,7 +458,7 @@ class QASystem(object):
             model_path = results_path + "model.weights/"
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
-            saver.save(sess, model_path, global_step=epoch)
+            saver.save(session, model_path, global_step=epoch)
             val_loss = self.validate(session, val_data)
             print('Epoch {}, validation loss {}'.format(epoch, val_loss))
 

@@ -111,5 +111,34 @@ class AnsPtrLSTMCell(LSTMCell):
         
         return b_k, self._cell(m, state)[1]
 
+def _linear_decode(H, num_units, p_len, scope='', span_search=False):
 
+    with vs.variable_scope(scope + '_ans_s', 
+            initializer=tf.contrib.layers.xavier_initializer()):      
+        b_s = _decode_helper(H, num_units, p_len)
+    with vs.variable_scope(scope + '_ans_e', 
+            initializer=tf.contrib.layers.xavier_initializer()):
+        b_e = _decode_helper(H, num_units, p_len)
+    
+    #  @TO-DO: p(a_s) x p(a_e)
+    if span_search:
+        x = 1
+    ans_s, ans_e = b_s, b_e
+    return ans_s, ans_e
 
+def _decode_helper(H, num_units, p_len):
+    """
+    A helper to do equation 7 & 8 one pass without LSTM, to avoid repeating code
+    """
+    V = tf.get_variable('V', shape=(2 * num_units, num_units))
+    VHr = tf.reshape(tf.matmul(tf.reshape(H, [-1, 2 * num_units]), V), 
+        [-1, p_len, num_units])
+    b = tf.get_variable('b', shape=(num_units,))
+    F = tf.tanh(VHr + b)
+    w = tf.get_variable('w', shape=(num_units, 1))
+    c = tf.get_variable('c', shape=())
+
+    # b_k: None, 750       
+    b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
+        [-1, num_units]), w) + c), [-1, p_len])
+    return b_k

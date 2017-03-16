@@ -15,7 +15,6 @@ def load_data(data_dir):
 
     dataset = {'train': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}, 
                'val': {'context': [], 'question': [], 'answer_start': [], 'answer_end': []}}
-
     train_context_id = data_dir + '/train.ids.context'
     val_context_id = data_dir + '/val.ids.context'
     train_question_id = data_dir + '/train.ids.question'
@@ -23,6 +22,15 @@ def load_data(data_dir):
     # Labels for training/validation
     train_answer_id = data_dir + '/train.span'
     val_answer_id = data_dir + '/val.span'
+
+    if tf.app.flags.FLAGS.test_run:
+        train_context_id += '.small'
+        val_context_id += '.small'
+        train_question_id += '.small'
+        val_question_id += '.small'
+        # Labels for training/validation
+        train_answer_id += '.small'
+        val_answer_id += '.small'
 
     if tf.gfile.Exists(train_context_id):
         rev_context = []
