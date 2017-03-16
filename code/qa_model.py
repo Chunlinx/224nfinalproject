@@ -69,7 +69,7 @@ class Encoder(object):
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
-    def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec, 
+    def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec,
             scope='', bidirectional=False):
         state_size = 2 * self.size if bidirectional else self.size
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
@@ -87,7 +87,6 @@ class Decoder(object):
         self.output_size = output_size
         self.state_size = FLAGS.state_size
         self.answer_cell = tf.contrib.rnn.LSTMCell(self.state_size)
-        # self.n_classes = 2  # O or Answer
 
     def decode(self, h_q, h_c):
         """
@@ -113,8 +112,8 @@ class Decoder(object):
         state_size = 2 * self.state_size if bidirectional else self.state_size
         cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
 
-        inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
-        beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
+        # inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
+        beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
 
         flat_beta = tf.reshape(tf.contrib.layers.flatten(beta),
             [-1, p_len * p_len])
@@ -179,11 +178,11 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, 
-            self.question_mask_placeholder, None, None, scope='question_encode', 
+        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
+            self.question_mask_placeholder, None, None, scope='question_encode',
             fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed, 
-            self.context_mask_placeholder, q_h_tup[0], q_h_tup[1], 
+        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed,
+            self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
             scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
@@ -193,13 +192,13 @@ class QASystem(object):
         H_q = tf.concat([q_fw_o, q_bw_o], 2)
 
         # Bidirectional embeddings
-        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length, 
-            self.question_length, self.context_mask_placeholder, 
+        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
+            self.question_length, self.context_mask_placeholder,
             scope='encode_attn', bidirectional=True)
         H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
 
         # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 
+        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length,
             scope='decode_attn', bidirectional=True)
 
     def setup_loss(self):
@@ -433,7 +432,6 @@ class QASystem(object):
                     (a_s_batch, a_e_batch))
                 # print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
                 prog.update(i + 1, [("train loss", train_loss)])
-                i += 1
 
             # Save model here for each epoch
             results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
@@ -458,6 +456,3 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
-
-
-
