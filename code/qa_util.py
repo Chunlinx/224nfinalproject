@@ -5,6 +5,7 @@ import time
 import logging
 import StringIO
 from collections import defaultdict, Counter, OrderedDict
+import random
 from numpy import array, zeros, allclose
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -144,6 +145,43 @@ def get_minibatch(data, batch_size):
         res = [minibatch_helper(d, batch_indices) for d in data[:2]] + \
             [np.array(d)[batch_indices] for d in data[2:]]
         yield res
+
+def get_sampled_data(dataset_train, dataset_val, p_len, q_len, sample=100):
+    """
+    Randomly sample data in both train and validation data sets
+    for evaluation
+    """
+    context_padded_train_, question_padded_train_, \
+        a_s_train_, a_e_train_ = dataset_train
+
+    context_padded_val_, question_padded_val_, \
+        a_s_val_, a_e_val_ = dataset_val
+    # Context, query, ans labels are read correctly
+
+    train_sample_idx = np.random.choice(np.arange(len(a_s_train_)), 
+        int(sample / 2), replace=False)
+    val_sample_idx = np.random.choice(np.arange(len(a_e_val_)), 
+        sample - int(sample / 2), replace=False)
+
+    context_train, context_train_len = context_padded_train_
+    context_val, context_val_len = context_padded_val_
+
+    query_train, query_train_len = question_padded_train_
+    query_val, query_val_len = question_padded_val_
+
+    merged_data = [(context_train[i], context_train_len[i],
+        query_train[i], query_train_len[i], a_s_train_[i], a_e_train_[i])\
+         for i in range(len(a_s_train_))] + [(context_val[i], context_val_len[i], 
+            query_val[i], query_val_len[i], a_s_val_[i], a_e_val_[i])\
+                for i in range(len(a_e_val_))]
+
+    selected_data = random.sample(merged_data, sample)
+    feed_data = [((np.reshape(tp[0], (1, p_len)), np.reshape(tp[1], (1,))),
+        (np.reshape(tp[2], (1, q_len)), np.reshape(tp[3], (1,))),
+            tp[0][tp[4]: tp[5] + 1]) for tp in selected_data]
+    ground_truth = [d[2].tolist() for d in feed_data]
+
+    return feed_data, ground_truth
 
 def map_id_to_words():
 	pass

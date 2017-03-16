@@ -14,7 +14,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 
 from qa_data import PAD_ID
-from qa_util import preprocess_dataset, get_minibatch, Progbar
+from qa_util import *
 from evaluate import exact_match_score, f1_score
 import rnn_ops
 
@@ -282,30 +282,34 @@ class QASystem(object):
             0, self.context_length - 1)
         input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
         input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
+    
         # Gradient norm
         output_feed = [self.loss, self.train_op]
         outputs = session.run(output_feed, input_feed)
 
         return outputs
 
-    def test(self, session, valid_context, valid_question, valid_y):
+    def test(self, session, valid_x, valid_y):
         """
         in here you should compute a cost for your validation set
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        # fill in this feed_dictionary like:
-        # input_feed['valid_x'] = valid_x
         input_feed = {}
-        input_feed[self.context_placeholder] = valid_context[0]
-        input_feed[self.context_mask_placeholder] = valid_context[1]
-        input_feed[self.question_placeholder] = valid_question[0]
-        input_feed[self.question_mask_placeholder] = valid_question[1]
-        input_feed[self.answer_start_label_placeholder] = valid_y[0]
-        input_feed[self.answer_end_label_placeholder] = valid_y[1]
+        input_feed[self.context_placeholder] = valid_x[0][0] # None, p_len
+        input_feed[self.context_mask_placeholder] = np.clip(valid_x[0][1],
+            0, self.context_length) 
+        input_feed[self.question_placeholder] = valid_x[1][0]   # None, q_len
+        input_feed[self.question_mask_placeholder] = np.clip(valid_x[1][1],
+            0, self.question_length)
+        input_feed[self.answer_start_label_placeholder] = np.clip(valid_y[0],
+            0, self.context_length - 1)  # None
+        input_feed[self.answer_end_label_placeholder] = np.clip(valid_y[1],
+            0, self.context_length - 1)
         input_feed[self.fw_dropout_placeholder] = 1.
         input_feed[self.bw_dropout_placeholder] = 1.
-
+        print(tf.shape(self.context_placeholder), 'c')
+        print(tf.shape(self.context_mask_placeholder), 'cm')
         output_feed = [self.loss]
         loss = session.run(output_feed, input_feed)
         return loss
@@ -353,7 +357,7 @@ class QASystem(object):
         :return:
         """
         valid_c, valid_q, valid_a_s, valid_a_e = valid_dataset
-        valid_cost = self.test(sess, valid_c, valid_q, (valid_a_s[0], valid_a_e[0]))
+        valid_cost = self.test(sess, (valid_c, valid_q), (valid_a_s, valid_a_e))
 
         return valid_cost
 
@@ -372,40 +376,19 @@ class QASystem(object):
         :param log: whether we print to std out stream
         :return:
         """
-        # Sample each for half of total samples
         f1, em = 0., 0.
-        context_padded_train_, question_padded_train_, \
-            a_s_train_, a_e_train_ = dataset_train
+        # Sample each for half of total samples
+        feed_data, ground_truth = get_sampled_data(dataset_train, 
+            dataset_val, self.context_length, self.question_length, sample=sample)
 
-        context_padded_val_, question_padded_val_, \
-            a_s_val_, a_e_val_ = dataset_val
-        # Context, query, ans labels are read correctly
-
-        train_sample_idx = np.random.choice(np.arange(len(a_s_train_)), int(sample / 2), replace=False)
-        val_sample_idx = np.random.choice(np.arange(len(a_e_val_)), sample - int(sample / 2), replace=False)
-
-        context_train, context_train_len = context_padded_train_
-        context_val, context_val_len = context_padded_val_
-
-        query_train, query_train_len = question_padded_train_
-        query_val, query_val_len = question_padded_val_
-
-        merged_data = [(context_train[i], context_train_len[i],
-            query_train[i], query_train_len[i], a_s_train_[i], a_e_train_[i]) for i in range(len(a_s_train_))]\
-                + [(context_val[i], context_val_len[i], query_val[i],
-                    query_val_len[i], a_s_val_[i], a_e_val_[i]) for i in range(len(a_e_val_))]
-
-        selected_data = random.sample(merged_data, sample)
-        feed_data = [((np.reshape(tp[0], (1, self.context_length)), np.reshape(tp[1], (1,))),
-            (np.reshape(tp[2], (1, self.question_length)), np.reshape(tp[3], (1,))),
-                tp[0][tp[4]: tp[5] + 1]) for tp in selected_data]
-        ground_truth = [d[2].tolist() for d in feed_data]
+        print(feed_data, 'fd')
+        print (ground_truth, 'gt')
 
         # Get the model back
         saver = tf.train.Saver()
+        if saver.last_checkpoints:
+            saver.restore(session, saver.last_checkpoints[-1])
 
-        # Use the last checkpoint
-        saver.restore(session, saver.last_checkpoints[-1])
         for i, d in enumerate(feed_data):
             a_s, a_e = self.answer(session, (d[0], d[1]))
             answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
@@ -444,31 +427,32 @@ class QASystem(object):
             self.context_length, self.question_length)
 
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
-        for epoch in range(FLAGS.epochs):
-            prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
-            for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
+        # for epoch in range(FLAGS.epochs):
+        #     prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
+        #     for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
 
-                a_s_batch = batch[2]
-                a_e_batch = batch[3]
+        #         a_s_batch = batch[2]
+        #         a_e_batch = batch[3]
 
-                # Not annealing at this point yet
-                # Return loss and gradient probably
-                train_loss, _ = self.optimize(session, (batch[0], batch[1]),
-                    (a_s_batch, a_e_batch))
+        #         # Not annealing at this point yet
+        #         # Return loss and gradient probably
+        #         train_loss, _ = self.optimize(session, (batch[0], batch[1]),
+        #             (a_s_batch, a_e_batch))
 
-                prog.update(i + 1, [("train loss", train_loss)])
+        #         prog.update(i + 1, [("train loss", train_loss)])
 
-            # Save model here for each epoch
-            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
-            model_path = results_path + "model.weights/"
-            if not os.path.exists(model_path):
-                os.makedirs(model_path)
-            saver.save(session, model_path, global_step=epoch)
-            val_loss = self.validate(session, val_data)
-            print('Epoch {}, validation loss {}'.format(epoch, val_loss))
+        #     # Save model here for each epoch
+        #     results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
+        #     model_path = results_path + "model.weights/"
+        #     if not os.path.exists(model_path):
+        #         os.makedirs(model_path)
+        #     saver.save(session, model_path, global_step=epoch)
 
-            # at the end of epoch
-            self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
+        # val_loss = self.validate(session, val_data)
+        # print('Epoch {}, validation loss {}'.format(0, val_loss))   # epoch
+
+        # at the end of epoch
+        # self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
 
         # some free code to print out number of parameters in your model
         # it's always good to check!
