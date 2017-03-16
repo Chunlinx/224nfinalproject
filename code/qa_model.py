@@ -308,8 +308,7 @@ class QASystem(object):
             0, self.context_length - 1)
         input_feed[self.fw_dropout_placeholder] = 1.
         input_feed[self.bw_dropout_placeholder] = 1.
-        print(tf.shape(self.context_placeholder), 'c')
-        print(tf.shape(self.context_mask_placeholder), 'cm')
+
         output_feed = [self.loss]
         loss = session.run(output_feed, input_feed)
         return loss
@@ -320,10 +319,7 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        # fill in this feed_dictionary like:
-        # input_feed['test_x'] = test_x
         input_feed = {}
-
         input_feed[self.context_placeholder] = test_x[0][0]
         input_feed[self.question_placeholder] = test_x[1][0]
         input_feed[self.context_mask_placeholder] = test_x[0][1]
@@ -381,8 +377,8 @@ class QASystem(object):
         feed_data, ground_truth = get_sampled_data(dataset_train, 
             dataset_val, self.context_length, self.question_length, sample=sample)
 
-        print(feed_data, 'fd')
-        print (ground_truth, 'gt')
+        # print(feed_data, 'fd')
+        # print (ground_truth, 'gt')
 
         # Get the model back
         saver = tf.train.Saver()
@@ -390,6 +386,7 @@ class QASystem(object):
             saver.restore(session, saver.last_checkpoints[-1])
 
         for i, d in enumerate(feed_data):
+
             a_s, a_e = self.answer(session, (d[0], d[1]))
             answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
             f1 += f1_score(answer, ground_truth[i]) / sample
@@ -427,33 +424,33 @@ class QASystem(object):
             self.context_length, self.question_length)
 
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
-        # for epoch in range(FLAGS.epochs):
-        #     prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
-        #     for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
+        for epoch in range(FLAGS.epochs):
+            prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
+            for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
 
-        #         a_s_batch = batch[2]
-        #         a_e_batch = batch[3]
+                a_s_batch = batch[2]
+                a_e_batch = batch[3]
 
-        #         # Not annealing at this point yet
-        #         # Return loss and gradient probably
-        #         train_loss, _ = self.optimize(session, (batch[0], batch[1]),
-        #             (a_s_batch, a_e_batch))
+                # Not annealing at this point yet
+                # Return loss and gradient probably
+                train_loss, _ = self.optimize(session, (batch[0], batch[1]),
+                    (a_s_batch, a_e_batch))
 
-        #         prog.update(i + 1, [("train loss", train_loss)])
+                prog.update(i + 1, [("train loss", train_loss)])
 
-        #     # Save model here for each epoch
-        #     results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
-        #     model_path = results_path + "model.weights/"
-        #     if not os.path.exists(model_path):
-        #         os.makedirs(model_path)
-        #     saver.save(session, model_path, global_step=epoch)
+            # Save model here for each epoch
+            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
+            model_path = results_path + "model.weights/"
+            if not os.path.exists(model_path):
+                os.makedirs(model_path)
+            saver.save(session, model_path, global_step=epoch)
 
-        # val_loss = self.validate(session, val_data)
-        # print('Epoch {}, validation loss {}'.format(0, val_loss))   # epoch
+            val_loss = self.validate(session, val_data)
+            print('Epoch {}, validation loss {}'.format(0, val_loss))   # epoch
 
-        # at the end of epoch
-        # self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
-
+            # at the end of epoch
+            result = self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
+            print('EM: {}%, F1: {} for {} samples'.format(result[1], result[0], FLAGS.evaluate))
         # some free code to print out number of parameters in your model
         # it's always good to check!
         # you will also want to save your model parameters in self.train_dir

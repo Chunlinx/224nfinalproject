@@ -606,3 +606,86 @@ Created model with fresh parameters.
 Num params: 13005100
 Number of params: 13005100 (retreival took 1.214461 secs)
 F1: 0.008, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.167365 secs)
+F1: 0.0197631096019, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.137118 secs)
+F1: 0.00384615384615, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.192670 secs)
+F1: 0.0, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.178158 secs)
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.155104 secs)
+F1: 0.00824742268041, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.143435 secs)
+F1: 0.0473072153763, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.200075 secs)
+F1: 0.0, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.149535 secs)
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.172429 secs)
+F1: 0.021996370093, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.200467 secs)
+F1: 0.0126984126984, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.250281 secs)
+F1: 0.00642973905673, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.155954 secs)
+F1: 0.0374589266156, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.288184 secs)
+F1: 0.0, EM: 0.0%, for 5 samples
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.112534 secs)
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0, EM: 0.0%, for 5 samples
+Number of params: 13005100 (retreival took 1.126551 secs)
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.138383 secs)
+Created model with fresh parameters.
+Num params: 13005100
+Number of params: 13005100 (retreival took 1.438341 secs)
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00240963855422, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0412926746194, EM: 0.0%, for 50 samples

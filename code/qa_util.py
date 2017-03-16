@@ -179,6 +179,7 @@ def get_sampled_data(dataset_train, dataset_val, p_len, q_len, sample=100):
     feed_data = [((np.reshape(tp[0], (1, p_len)), np.reshape(tp[1], (1,))),
         (np.reshape(tp[2], (1, q_len)), np.reshape(tp[3], (1,))),
             tp[0][tp[4]: tp[5] + 1]) for tp in selected_data]
+
     ground_truth = [d[2].tolist() for d in feed_data]
 
     return feed_data, ground_truth
