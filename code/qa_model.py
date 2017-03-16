@@ -14,7 +14,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 
 from qa_data import PAD_ID
-from qa_util import preprocess_dataset, get_minibatch
+from qa_util import preprocess_dataset, get_minibatch, Progbar
 from evaluate import exact_match_score, f1_score
 import rnn_ops
 
@@ -26,10 +26,13 @@ def get_optimizer(opt):
         optfn = tf.train.AdamOptimizer
     elif opt == "sgd":
         optfn = tf.train.GradientDescentOptimizer
+    elif opt == "adagrad":
+        optfn = tf.train.AdagradOptimizer
+    elif opt == "adadelta":
+        optfn = tf.train.AdadeltaOptimizer
     else:
         assert (False)
     return optfn
-
 
 class Encoder(object):
     def __init__(self, size, vocab_dim):
@@ -66,13 +69,12 @@ class Encoder(object):
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
-    def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec, scope=''):
-
+    def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec, 
+            scope='', bidirectional=False):
+        state_size = 2 * self.size if bidirectional else self.size
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-        fw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
-                q_len, 2 * self.size, FLAGS.batch_size)
-        bw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
-                q_len, 2 * self.size, FLAGS.batch_size)
+        fw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
+        bw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
 
         # @TODO: Define what the inputs are: h_p
         outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
@@ -106,9 +108,10 @@ class Decoder(object):
             a_e = _linear([h_q, h_c], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, scope=''):
+    def decode_w_attn(self, H, p_len, bidirectional=False ,scope=''):
 
-        cell = rnn_ops.AnsPtrLSTMCell(H, self.state_size, p_len)
+        state_size = 2 * self.state_size if bidirectional else self.state_size
+        cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
 
         inputs = tf.zeros((tf.shape(H)[0], p_len, p_len))
         beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
@@ -123,7 +126,7 @@ class Decoder(object):
             ans_e = _linear(flat_beta, p_len, True)
 
         #  @TO-DO: p(a_s) x p(a_e)
-        
+
         return ans_s, ans_e
 
 class QASystem(object):
@@ -176,23 +179,28 @@ class QASystem(object):
         """
         # put the network together (combine add loss, etc)
 
-        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, self.question_mask_placeholder,
-            None, None, scope='question_encode', fw_dropout=self.fw_dropout_placeholder,
-            bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed, self.context_mask_placeholder,
-            q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
+        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed, 
+            self.question_mask_placeholder, None, None, scope='question_encode', 
+            fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
+        p_fw_o, p_bw_o, _ = self.encoder.encode(self.context_embed, 
+            self.context_mask_placeholder, q_h_tup[0], q_h_tup[1], 
+            scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
+        # None, 750, 400
         H_p = tf.concat([p_fw_o, p_bw_o], 2)
+        # None, 45, 400
         H_q = tf.concat([q_fw_o, q_bw_o], 2)
-        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
-            self.question_length, self.context_mask_placeholder, scope='encode_attn')
+
+        # Bidirectional embeddings
+        outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length, 
+            self.question_length, self.context_mask_placeholder, 
+            scope='encode_attn', bidirectional=True)
         H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
 
-        # H_r = tf.concat([p_fw_o, p_bw_o], 2)    
-
         # This is the predict op
-        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
+        self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 
+            scope='decode_attn', bidirectional=True)
 
     def setup_loss(self):
         """
@@ -206,7 +214,7 @@ class QASystem(object):
             int_mask = tf.cast(mask, tf.float32)
             mask_s = self.a_s + tf.log(int_mask)
             mask_e = self.a_e + tf.log(int_mask)    # None, 750
-     
+
             loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_start_label_placeholder,
                 logits=mask_s)
@@ -413,6 +421,7 @@ class QASystem(object):
 
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
         for epoch in range(FLAGS.epochs):
+            prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
 
                 a_s_batch = batch[2]
@@ -422,7 +431,9 @@ class QASystem(object):
                 # Return loss and gradient probably
                 train_loss, _ = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-                print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
+                # print('Epoch {}, {}th batch: training loss {}'.format(epoch, i, train_loss))
+                prog.update(i + 1, [("train loss", train_loss)])
+                i += 1
 
             # Save model here for each epoch
             results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
@@ -447,3 +458,6 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+
+

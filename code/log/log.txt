@@ -503,3 +503,23 @@ Num params: 845315901
 Created model with fresh parameters.
 Created model with fresh parameters.
 Num params: 845315901
+Created model with fresh parameters.
+Created model with fresh parameters.
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Num params: 850120703
+Created model with fresh parameters.
+Num params: 846518303
+Created model with fresh parameters.
+Num params: 851921903
