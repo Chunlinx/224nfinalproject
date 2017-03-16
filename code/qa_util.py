@@ -158,22 +158,32 @@ def get_sampled_data(dataset_train, dataset_val, p_len, q_len, sample=100):
         a_s_val_, a_e_val_ = dataset_val
     # Context, query, ans labels are read correctly
 
+    a_s_train = np.clip(a_e_train_, 0, p_len)
+    a_e_train = np.clip(a_e_train_, 0, p_len)
+    a_s_val = np.clip(a_s_val_, 0, p_len)
+    a_e_val = np.clip(a_e_val_, 0, p_len)
+
     train_sample_idx = np.random.choice(np.arange(len(a_s_train_)), 
         int(sample / 2), replace=False)
     val_sample_idx = np.random.choice(np.arange(len(a_e_val_)), 
         sample - int(sample / 2), replace=False)
 
-    context_train, context_train_len = context_padded_train_
-    context_val, context_val_len = context_padded_val_
+    context_train, context_train_len_ = context_padded_train_
+    context_val, context_val_len_ = context_padded_val_
 
-    query_train, query_train_len = question_padded_train_
-    query_val, query_val_len = question_padded_val_
+    query_train, query_train_len_ = question_padded_train_
+    query_val, query_val_len_ = question_padded_val_
+
+    context_train_len = np.clip(context_train_len_, 0, p_len)
+    context_val_len = np.clip(context_val_len_, 0, p_len)
+    query_train_len = np.clip(query_train_len_, 0, q_len)
+    query_val_len = np.clip(query_val_len_, 0, q_len)
 
     merged_data = [(context_train[i], context_train_len[i],
-        query_train[i], query_train_len[i], a_s_train_[i], a_e_train_[i])\
-         for i in range(len(a_s_train_))] + [(context_val[i], context_val_len[i], 
-            query_val[i], query_val_len[i], a_s_val_[i], a_e_val_[i])\
-                for i in range(len(a_e_val_))]
+        query_train[i], query_train_len[i], a_s_train[i], a_e_train[i])\
+         for i in range(len(a_s_train))] + [(context_val[i], context_val_len[i], 
+            query_val[i], query_val_len[i], a_s_val[i], a_e_val[i])\
+                for i in range(len(a_e_val))]
 
     selected_data = random.sample(merged_data, sample)
     feed_data = [((np.reshape(tp[0], (1, p_len)), np.reshape(tp[1], (1,))),

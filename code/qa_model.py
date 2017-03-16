@@ -376,17 +376,13 @@ class QASystem(object):
         # Sample each for half of total samples
         feed_data, ground_truth = get_sampled_data(dataset_train, 
             dataset_val, self.context_length, self.question_length, sample=sample)
-
-        # print(feed_data, 'fd')
-        # print (ground_truth, 'gt')
-
+        
         # Get the model back
         saver = tf.train.Saver()
         if saver.last_checkpoints:
             saver.restore(session, saver.last_checkpoints[-1])
 
         for i, d in enumerate(feed_data):
-
             a_s, a_e = self.answer(session, (d[0], d[1]))
             answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
             f1 += f1_score(answer, ground_truth[i]) / sample
@@ -430,12 +426,8 @@ class QASystem(object):
 
                 a_s_batch = batch[2]
                 a_e_batch = batch[3]
-
-                # Not annealing at this point yet
-                # Return loss and gradient probably
                 train_loss, _ = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-
                 prog.update(i + 1, [("train loss", train_loss)])
 
             # Save model here for each epoch
@@ -451,12 +443,12 @@ class QASystem(object):
             # at the end of epoch
             result = self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
             print('EM: {}%, F1: {} for {} samples'.format(result[1], result[0], FLAGS.evaluate))
+        
         # some free code to print out number of parameters in your model
         # it's always good to check!
         # you will also want to save your model parameters in self.train_dir
         # so that you can use your trained model to make predictions, or
         # even continue training
-
         tic = time.time()
         params = tf.trainable_variables()
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))

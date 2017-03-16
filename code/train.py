@@ -38,7 +38,7 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
-tf.app.flags.DEFINE_integer("evaluate", 50, "How many samples to evaluate EM and F1 score.") # 100
+tf.app.flags.DEFINE_integer("evaluate", 200, "How many samples to evaluate EM and F1 score.") # 100
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_integer("baseline", 1, "1 for running baseline model; 0 for MatchLSTM implementation")
 tf.app.flags.DEFINE_string("model", "sequence", "boundary / sequence")

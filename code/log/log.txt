@@ -689,3 +689,73 @@ Num params: 13005100
 Created model with fresh parameters.
 Num params: 13005100
 F1: 0.0412926746194, EM: 0.0%, for 50 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0100730685486, EM: 0.0%, for 50 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0331189276902, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0234372960981, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.012580249095, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0176, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0048798138043, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0497317007489, EM: 0.0%, for 10 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0, EM: 0.0%, for 20 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0258485634616, EM: 0.0%, for 20 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.038065275363, EM: 0.0%, for 20 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.031356037729, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00967970399307, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0111587521893, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00091691086114, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00768598384675, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00902872818691, EM: 0.0%, for 30 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.0131198415271, EM: 0.0%, for 300 samples
+Created model with fresh parameters.
+Num params: 13005100
+F1: 0.00260867107454, EM: 0.0%, for 200 samples
