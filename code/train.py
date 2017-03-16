@@ -111,7 +111,7 @@ def main(_):
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         initialize_model(sess, qa, load_train_dir)
         save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        # qa.train(sess, dataset, save_train_dir)
+        qa.train(sess, dataset, save_train_dir)
 
         qa.evaluate_answer(sess, preprocess_dataset(dataset['train'], FLAGS.output_size, 
             FLAGS.question_size), preprocess_dataset(dataset['val'], FLAGS.output_size,

@@ -376,7 +376,7 @@ class QASystem(object):
         # Sample each for half of total samples
         feed_data, ground_truth = get_sampled_data(dataset_train, 
             dataset_val, self.context_length, self.question_length, sample=sample)
-        
+
         # Get the model back
         saver = tf.train.Saver()
         if saver.last_checkpoints:
@@ -441,8 +441,8 @@ class QASystem(object):
             print('Epoch {}, validation loss {}'.format(0, val_loss))   # epoch
 
             # at the end of epoch
-            result = self.evaluate_answer(session, train_data, val_data, FLAGS.evaluate)
-            print('EM: {}%, F1: {} for {} samples'.format(result[1], result[0], FLAGS.evaluate))
+            result = self.evaluate_answer(session, train_data, val_data, 
+                FLAGS.evaluate, log=True)
         
         # some free code to print out number of parameters in your model
         # it's always good to check!
