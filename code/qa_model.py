@@ -142,7 +142,7 @@ class QASystem(object):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.embeddings = tf.constant(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
+        self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         self.context_length = FLAGS.output_size
         self.question_length = FLAGS.question_size
 
@@ -270,10 +270,14 @@ class QASystem(object):
         input_feed = {}
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
-        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 0, FLAGS.output_size)
-        input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1], 0, FLAGS.question_size)
-        input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0], 0, self.context_length)
-        input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1], 0, self.context_length)
+        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 
+            0, self.context_length - 1)
+        input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1],
+            0, self.question_length - 1)
+        input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0], 
+            0, self.context_length - 1)
+        input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1], 
+            0, self.context_length - 1)
         input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
         input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
         # Gradient norm
@@ -477,4 +481,4 @@ class QASystem(object):
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
 
 
-        
+

@@ -25,7 +25,7 @@ tf.app.flags.DEFINE_float("bw_dropout", 0.82, "Fraction of units not randomly dr
 tf.app.flags.DEFINE_integer("batch_size", 32, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("epochs", 10, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("output_size", 750, "The output size of your model.")   # 750
+tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
 tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
 tf.app.flags.DEFINE_string("data_dir", "../data/squad", "SQuAD directory (default ./data/squad)")
@@ -40,9 +40,9 @@ tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", 
 tf.app.flags.DEFINE_integer("evaluate", 100, "How many samples to evaluate EM and F1 score.")
 tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_integer("baseline", 0, "1 for running baseline model; 0 for MatchLSTM implementation")
-tf.app.flags.DEFINE_string("model", "sequence", "boundary / sequence")
+tf.app.flags.DEFINE_string("model", "boundary", "boundary / sequence")
 tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
-tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 1, "1 for using BiDirect in AnswerPointer LSTM, 0 for forward only")
+tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
