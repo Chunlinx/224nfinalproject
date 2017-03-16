@@ -70,9 +70,9 @@ class Encoder(object):
 
         # Define the MatchLSTMCell cell for the bidirectional_match_lstm
         fw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
-                q_len, self.size, FLAGS.batch_size)
+                q_len, 2 * self.size, FLAGS.batch_size)
         bw_cell = rnn_ops.MatchLSTMCell(self.size, h_q, p_len, 
-                q_len, self.size, FLAGS.batch_size)
+                q_len, 2 * self.size, FLAGS.batch_size)
 
         # @TODO: Define what the inputs are: h_p
         outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
@@ -183,9 +183,16 @@ class QASystem(object):
             q_h_tup[0], q_h_tup[1], scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        outputs, _ = self.encoder.encode_w_attn(p_fw_o, q_fw_o, self.context_length,
-            self.question_length, self.context_mask_placeholder, scope='encode_attn')
-        H_r = tf.concat([outputs[0], outputs[1]], 2)
+        # H_p = tf.concat([p_fw_o, p_bw_o], 2)
+        # H_q = tf.concat([q_fw_o, q_bw_o], 2)
+        # outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
+        #     self.question_length, self.context_mask_placeholder, scope='encode_attn')
+        # H_r = tf.concat([outputs[0], outputs[1]], 2)
+        
+        H_r = tf.concat([p_fw_o, p_bw_o], 2)
+        
+        print(H_r.get_shape().as_list(), 'H_r') # None, 750, 400
+        # H_r = tf.ones((FLAGS.batch_size, 750, 400))
 
         # This is the predict op
         self.a_s, self.a_e = self.decoder.decode_w_attn(H_r, self.context_length, 'pntr_net')
@@ -198,17 +205,16 @@ class QASystem(object):
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
 
-            # mask = tf.sequence_mask(self.context_mask_placeholder, self.context_length)
+            mask = tf.sequence_mask(self.context_mask_placeholder, self.context_length)
+            mask_s = tf.reshape(tf.boolean_mask(self.a_s, mask), [-1, self.context_length])
+            mask_e = tf.reshape(tf.boolean_mask(self.a_e, mask), [-1, self.context_length])
 
-            # mask_s = tf.boolean_mask(self.a_s, mask)
-            # mask_e = tf.boolean_mask(self.a_e, mask)
-            # print (mask_s.get_shape().as_list())
             loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_start_label_placeholder,
-                logits=self.a_s)
+                logits=mask_s)
             loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.answer_end_label_placeholder,
-                logits=self.a_e)
+                logits=mask_e)
 
             self.loss = tf.reduce_mean(loss_vec_1 + loss_vec_2)
 

@@ -39,8 +39,13 @@ class MatchLSTMCell(LSTMCell):
             # Use same weights for fw/bw linear
             with vs.variable_scope('inner'):
                 x = _linear([hp, h_r], self._num_units, True)
+
+            print(x.get_shape().as_list())
+
             x = tf.reshape(tf.tile(tf.expand_dims(x, 0), [self.batch_size,
-                1, self.p_len]), [-1,  self._num_units, self.p_len])
+                1, self.p_len]), [self.batch_size,  self._num_units, self.p_len])
+
+
             G = tf.reshape(tf.tanh(fixed_WH + x), [-1, self._num_units])
 
             # Use same weights for fw/bw linear
@@ -57,7 +62,7 @@ class AnsPtrLSTMCell(LSTMCell):
         self._cell = LSTMCell(num_units)   #  200
         self._output_size = p_len
         self.batch_size = batch_size
-        self.H = Hr
+        self.H = Hr     # None, 750, 400
 
     @property
     def state_size(self):
@@ -72,22 +77,40 @@ class AnsPtrLSTMCell(LSTMCell):
         with tf.variable_scope(scope or self.__class__.__name__,
             initializer=tf.contrib.layers.xavier_initializer()):
 
-            V = tf.get_variable('V', shape=(self._num_units, 2 * self._num_units))
-            fixed_VH = tf.reshape(tf.matmul(tf.reshape(self.H, [-1, self._num_units]), V), 
-                [-1, self._num_units, self._output_size])
+            V = tf.get_variable('V', shape=(2 * self._num_units, self._num_units))
+            
+            fixed_VH = tf.reshape(tf.matmul(tf.reshape(self.H, [-1, 2 * self._num_units]), V), 
+                [-1, self._output_size, self._num_units])   # None, 750, 200
 
-            with vs.variable_scope('linear'):
-                x = _linear(state, self._num_units, True)
+            x = _linear(state.h, self._num_units, True)
+            x = tf.tile(tf.expand_dims(x, 1), [1, self._output_size, 1])   
+            # None, 750, 200
+            
+            F = tf.tanh(fixed_VH + x)   # None, 750, 200
 
-            x = tf.tile(tf.expand_dims(x, 2), [-1, 1, self._output_size])
-            F = tf.tanh(fixed_VH + x)   # None, 200, 750
-            F = tf.reshape(F, [-1, self._num_units]) # None, 200
+            w = tf.get_variable('w', shape=(self._num_units, 1))
+            c = tf.get_variable('c', shape=())
 
-            with vs.variable_scope('f_linear'):
-                b_k = tf.nn.softmax(_linear(F, self._output_size, True))
+            b_k = tf.nn.softmax(tf.matmul(tf.reshape(F, [-1, self._num_units]), w) + c)
+            b_k = tf.reshape(b_k, [-1, self._output_size])  # None, 750            
 
-            m = tf.matmul(tf.reshape(self.H, [-1, self._output_size]), tf.reshape(b_k, [self._output_size, -1]))
-            m = tf.reshape(m, [-1, 2 * self._num_units])  # None, 200
+            b_k_m = tf.expand_dims(b_k, 2)
+            m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), b_k_m)
 
+            # m = tf.matmul(b_k, tf.reshape(self.H, [self._output_size, -1]))
+            # m = tf.reshape(m, [-1, 2 * self._num_units])  # None, 400
+            
+            # m = tf.Print(m, [tf.shape(m)], message="m variable")
+            m = tf.reshape(m, [-1, 2 * self._num_units])
+            print(m.get_shape().as_list(), 'm')
+            print(state.h.get_shape().as_list(), 'sh')
+            print(state.c.get_shape().as_list(), 'sc')
         #TODO: Make sure totally correct
-        return b_k, self._cell(m, state)[1]
+
+        s, b = self._cell(m, state)
+        print(s.get_shape().as_list(), 'o')
+        print(b.h.get_shape().as_list(), 'bh')
+        return b_k, b#self._cell(m, state)[1]
+
+
+

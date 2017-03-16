@@ -408,3 +408,78 @@ Created model with fresh parameters.
 Num params: 2164700
 Created model with fresh parameters.
 Num params: 846087946
+Created model with fresh parameters.
+Num params: 844543250
+Created model with fresh parameters.
+Num params: 844543250
+Created model with fresh parameters.
+Num params: 844543250
+Created model with fresh parameters.
+Num params: 844543250
+Created model with fresh parameters.
+Num params: 844543250
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 844503250
+Created model with fresh parameters.
+Num params: 844503250
+Created model with fresh parameters.
+Created model with fresh parameters.
+Created model with fresh parameters.
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 845466450
+Created model with fresh parameters.
+Num params: 845466450
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
+Created model with fresh parameters.
+Num params: 845315901
