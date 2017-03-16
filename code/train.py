@@ -17,6 +17,7 @@ from os.path import join as pjoin
 import logging
 
 logging.basicConfig(level=logging.INFO)
+tf.app.flags.DEFINE_integer("train_embeddings", 1, "1 for training embeddings, 0 for not.")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
@@ -37,9 +38,9 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
-tf.app.flags.DEFINE_integer("evaluate", 100, "How many samples to evaluate EM and F1 score.")
+tf.app.flags.DEFINE_integer("evaluate", 200, "How many samples to evaluate EM and F1 score.")
 tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
-tf.app.flags.DEFINE_integer("baseline", 0, "1 for running baseline model; 0 for MatchLSTM implementation")
+tf.app.flags.DEFINE_integer("baseline", 1, "1 for running baseline model; 0 for MatchLSTM implementation")
 tf.app.flags.DEFINE_string("model", "boundary", "boundary / sequence")
 tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
 tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")

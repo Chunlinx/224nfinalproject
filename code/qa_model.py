@@ -141,8 +141,10 @@ class QASystem(object):
         # Save your model parameters/checkpoints here
         self.encoder = encoder
         self.decoder = decoder
-
-        self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
+        if FLAGS.train_embeddings:
+            self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
+        else:
+            self.embeddings = tf.constant(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         self.context_length = FLAGS.output_size
         self.question_length = FLAGS.question_size
 
@@ -271,9 +273,9 @@ class QASystem(object):
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
         input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 
-            0, self.context_length - 1)
+            0, self.context_length)
         input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1],
-            0, self.question_length - 1)
+            0, self.question_length)
         input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0], 
             0, self.context_length - 1)
         input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1], 
