@@ -270,8 +270,7 @@ class QASystem(object):
             FLAGS.learning_rate)
         grad, var = zip(*optimizer.compute_gradients(self.loss))
         grad, var = list(grad), list(var)
-        # if self.config.clip_gradients:
-        #     grad, _ = tf.clip_by_global_norm(grad, self.config.max_grad_norm)
+        grad, _ = tf.clip_by_global_norm(grad, FLAGS.max_gradient_norm)
         self.grad_norm = tf.global_norm(grad)
         train_op = optimizer.apply_gradients(zip(grad, var))
 
