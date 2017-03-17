@@ -126,7 +126,7 @@ class Decoder(object):
             cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
                 FLAGS.loss, model=FLAGS.model)
             beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, sequence_length=seq_len)
-
+            
         return beta
 
     def linear_decode(self, H, p_len, scope='', span_search=False):

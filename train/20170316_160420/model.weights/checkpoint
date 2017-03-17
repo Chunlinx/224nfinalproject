@@ -1,0 +1,3 @@
+model_checkpoint_path: "-1"
+all_model_checkpoint_paths: "../../20170316_155654/model.weights/-0"
+all_model_checkpoint_paths: "-1"

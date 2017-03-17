@@ -1,0 +1,4 @@
+model_checkpoint_path: "-2"
+all_model_checkpoint_paths: "../../20170316_155654/model.weights/-0"
+all_model_checkpoint_paths: "../../20170316_160420/model.weights/-1"
+all_model_checkpoint_paths: "-2"
