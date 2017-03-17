@@ -74,7 +74,6 @@ class AnsPtrLSTMCell(LSTMCell):
         else:   # Not concatenating for boundary model
             self.H = Hr
         self.loss = loss
-        
     @property
     def state_size(self):
         return self._state_size
@@ -123,12 +122,12 @@ class AnsPtrLSTMCell(LSTMCell):
                 raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE") 
         return b_k, self._cell(m, state)[1]
 
-def _linear_decode(H, num_units, p_len, scope='', loss='softmax', span_search=False):
+def _linear_decode(H, num_units, p_len, loss='softmax', span_search=False):
 
-    with vs.variable_scope(scope + '_ans_s', 
+    with vs.variable_scope('ans_s', 
             initializer=tf.contrib.layers.xavier_initializer()):      
         b_s = _decode_helper(H, num_units, p_len, loss)
-    with vs.variable_scope(scope + '_ans_e', 
+    with vs.variable_scope('ans_e', 
             initializer=tf.contrib.layers.xavier_initializer()):
         b_e = _decode_helper(H, num_units, p_len, loss)
     

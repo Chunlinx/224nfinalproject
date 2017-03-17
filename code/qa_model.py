@@ -176,53 +176,53 @@ class QASystem(object):
         :return:
         """
         # put the network together (combine add loss, etc)
-        with vs.variable_scope('encode'):
+        with vs.variable_scope('setup_system'):
             q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
-                self.question_mask_placeholder, None, None, 
+                self.question_mask_placeholder, None, None, scope='preprocess', 
                 fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
             p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed,
                 self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
-                fw_dropout=self.fw_dropout_placeholder,
+                fw_dropout=self.fw_dropout_placeholder, scope='preprocess', 
                 bw_dropout=self.bw_dropout_placeholder, reuse=True)
 
-        if FLAGS.model == 'baseline':
-            q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
-            p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
-            self.a_s, self.a_e = self.decoder.decode(q_h, p_h)
+            if FLAGS.model == 'baseline':
+                q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
+                p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
+                self.a_s, self.a_e = self.decoder.decode(q_h, p_h)
 
-        else:
-            if FLAGS.bidirectional_preprocess:
-                H_p = tf.concat([p_fw_o, p_bw_o], 2) # None, 750, 400
-                H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
             else:
-                H_p, H_q = p_fw_o, q_fw_o
+                if FLAGS.bidirectional_preprocess:
+                    H_p = tf.concat([p_fw_o, p_bw_o], 2) # None, 750, 400
+                    H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
+                else:
+                    H_p, H_q = p_fw_o, q_fw_o
 
-            # Bidirectional embeddings
-            outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
-                self.question_length, self.context_mask_placeholder,
-                scope='encode_attn')
-            H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
+                # Bidirectional embeddings
+                outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
+                    self.question_length, self.context_mask_placeholder,
+                    scope='encode_attn')
+                H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
 
-            # These are the predict ops
-            if FLAGS.model == 'sequence':
-                # beta: None, 750, 751
-                beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
-                    self.context_mask_placeholder, scope='decode_attn_seq')
-                # TODO: verify this selection is correct
-                self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
-                self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
+                # These are the predict ops
+                if FLAGS.model == 'sequence':
+                    # beta: None, 750, 751
+                    beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
+                        self.context_mask_placeholder, scope='decode_attn_seq')
+                    # TODO: verify this selection is correct
+                    self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
+                    self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
 
-            elif FLAGS.model == 'boundary':
-                # beta: None, 750, 2
-                beta = self.decoder.decode_w_attn(H_r, self.context_length, 
-                    self.context_mask_placeholder, scope='decode_attn_bnd')
-                self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
-                self.a_e = tf.reshape(beta[..., 1], [-1, self.context_length])
-            elif FLAGS.model == 'linear':
-                self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
-                    'encode_attn_bnd', span_search=True)
-            else:
-                raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
+                elif FLAGS.model == 'boundary':
+                    # beta: None, 750, 2
+                    beta = self.decoder.decode_w_attn(H_r, self.context_length, 
+                        self.context_mask_placeholder, scope='decode_attn_bnd')
+                    self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
+                    self.a_e = tf.reshape(beta[..., 1], [-1, self.context_length])
+                elif FLAGS.model == 'linear':
+                    self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
+                        'encode_attn_bnd', span_search=True)
+                else:
+                    raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
 
     def setup_loss(self):
         """
