@@ -216,8 +216,11 @@ class QASystem(object):
                     # beta: None, 750, 2
                     beta = self.decoder.decode_w_attn(H_r, self.context_length, 
                         self.context_mask_placeholder, scope='decode_attn_bnd')
-                    self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
-                    self.a_e = tf.reshape(beta[..., 1], [-1, self.context_length])
+                    # Just grab the last output since it's the pred after reading
+                    a_s = tf.reshape(beta[:, -1, 0], [-1, 1])
+                    a_e = tf.reshape(beta[:, -1, 1], [-1, 1])
+                    self.a_s = tf.one_hot(a_s, self.context_length, dtype=tf.float32)
+                    self.a_e = tf.one_hot(a_e, self.context_length, dtype=tf.float32)
                 elif FLAGS.model == 'linear':
                     self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                         'encode_attn_bnd', span_search=True)
@@ -273,7 +276,6 @@ class QASystem(object):
         grad, _ = tf.clip_by_global_norm(grad, FLAGS.max_gradient_norm)
         self.grad_norm = tf.global_norm(grad)
         train_op = optimizer.apply_gradients(zip(grad, var))
-
         return train_op
 
     def setup_embeddings(self):
