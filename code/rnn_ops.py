@@ -65,11 +65,15 @@ class MatchLSTMCell(LSTMCell):
 
 class AnsPtrLSTMCell(LSTMCell):
 
-    def __init__(self, Hr, num_units, p_len):
+    def __init__(self, Hr, num_units, p_len, loss, model=''):
         super(AnsPtrLSTMCell, self).__init__(num_units)
         self._cell = LSTMCell(num_units)   # 400
         self._output_size = p_len
-        self.H = tf.concat([Hr, tf.zeros((tf.shape(Hr)[0], 1, 2 * num_units))], 1)
+        if model == 'sequence':
+            self.H = tf.concat([Hr, tf.zeros((tf.shape(Hr)[0], 1, 2 * num_units))], 1)
+        else:   # Not concatenating for boundary model
+            self.H = Hr
+        self.loss = loss
     @property
     def state_size(self):
         return self._state_size
@@ -100,34 +104,42 @@ class AnsPtrLSTMCell(LSTMCell):
             w = tf.get_variable('w', shape=(self._num_units, 1))
             c = tf.get_variable('c', shape=())
 
-            # b_k: None, 750       
-            b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
-                [-1, self._num_units]), w) + c), [-1, self._output_size])
-            
-            # m: None, 400
-            m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), tf.expand_dims(b_k, 2))
-            m = tf.reshape(m, [-1, 2 * self._num_units])
-        
+            # b_k: None, 750     
+            if self.loss == 'l2':        
+                b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
+                    [-1, self._num_units]), w) + c), [-1, self._output_size])
+                # m: None, 400
+                m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), tf.expand_dims(b_k, 2))
+                m = tf.reshape(m, [-1, 2 * self._num_units])
+            elif self.loss == 'softmax' or 'sigmoid':
+                b_k = tf.reshape(tf.matmul(tf.reshape(F, 
+                    [-1, self._num_units]), w) + c, [-1, self._output_size])
+                # m: None, 400
+                m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), 
+                    tf.expand_dims(tf.nn.softmax(b_k), 2))
+                m = tf.reshape(m, [-1, 2 * self._num_units])
+            else:
+                raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE") 
         return b_k, self._cell(m, state)[1]
 
-def _linear_decode(H, num_units, p_len, scope='', span_search=False):
+def _linear_decode(H, num_units, p_len, scope='', loss='softmax', span_search=False):
 
     with vs.variable_scope(scope + '_ans_s', 
             initializer=tf.contrib.layers.xavier_initializer()):      
-        b_s = _decode_helper(H, num_units, p_len)
+        b_s = _decode_helper(H, num_units, p_len, loss)
     with vs.variable_scope(scope + '_ans_e', 
             initializer=tf.contrib.layers.xavier_initializer()):
-        b_e = _decode_helper(H, num_units, p_len)
+        b_e = _decode_helper(H, num_units, p_len, loss)
     
     ans_s, ans_e = b_s, b_e
-    
+
     # TO-DO: p(a_s) x p(a_e)
     if span_search:
         pass
     
     return ans_s, ans_e
 
-def _decode_helper(H, num_units, p_len):
+def _decode_helper(H, num_units, p_len, loss):
     """
     A helper to do equation 7 & 8 one pass without LSTM, to avoid repeating code
     """
@@ -139,7 +151,15 @@ def _decode_helper(H, num_units, p_len):
     w = tf.get_variable('w', shape=(num_units, 1))
     c = tf.get_variable('c', shape=())
 
-    # b_k: None, 750       
-    b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
-        [-1, num_units]), w) + c), [-1, p_len])
+    # b_k: None, 750 
+    if loss == 'l2':
+        b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
+            [-1, num_units]), w) + c), [-1, p_len])
+    elif loss == 'softmax' or 'sigmoid':
+        b_k = tf.reshape(tf.matmul(tf.reshape(F, 
+            [-1, num_units]), w) + c, [-1, p_len])
+    else:
+        raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE")
     return b_k
+
+

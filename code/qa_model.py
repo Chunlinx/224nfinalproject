@@ -109,24 +109,29 @@ class Decoder(object):
     def decode_w_attn(self, H, p_len, seq_len, scope=''):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
-        
+        # For boundary case, just random thing with 2 time steps, start and end
+        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], 2, p_len))
         if FLAGS.bidirectional_answer_pointer:
-            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
-            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
+            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+                FLAGS.loss, model=FLAGS.model)
+            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+                FLAGS.loss, model=FLAGS.model)
             # TODO: Make sure this is reusing variables
             with vs.variable_scope(scope):
                 (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, 
-                    H, dtype=tf.float32, sequence_length=seq_len)
+                    inputs, dtype=tf.float32, sequence_length=seq_len)
             # simply adding the result from forward and backward
-            beta = beta_fw + beta_bw
+            beta = beta_fw + beta_bw    # None, p_len, p_len + 1
         else:
-            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len)
-            beta, _ = tf.nn.dynamic_rnn(cell, H, dtype=tf.float32)
+            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+                FLAGS.loss, model=FLAGS.model)
+            beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, sequence_length=seq_len)
+
         return beta
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
-        return rnn_ops._linear_decode(H, state_size, p_len, scope,
+        return rnn_ops._linear_decode(H, state_size, p_len, scope, FLAGS.loss,
             span_search)
 
 class QASystem(object):
@@ -212,17 +217,22 @@ class QASystem(object):
             if FLAGS.model == 'sequence':
                 # beta: None, 750, 751
                 beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
-                    self.context_mask_placeholder, scope='decode_attn')    
-                #TODO: verify this selection is correct
+                    self.context_mask_placeholder, scope='decode_attn_seq')    
+                # TODO: verify this selection is correct
                 self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
                 # Getting the P + 1 column
                 self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
-            
             elif FLAGS.model == 'boundary':
+                # beta: None, 2, 750
+                beta = self.decoder.decode_w_attn(H_r, self.context_length, 
+                    self.context_mask_placeholder, scope='decode_attn_bnd')
+                self.a_s = tf.reshape(beta[:, 0, :], [-1, self.context_length])
+                self.a_e = tf.reshape(beta[:, 1, :], [-1, self.context_length])
+            elif FLAGS.model == 'linear':
                 self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                     'answer_pointer_boundary', span_search=True)
             else:
-                raise NotImplementedError("Only allow boundary model or sequence model")
+                raise NotImplementedError("Only allow following models: sequence, boundary, linear")
 
     def setup_loss(self):
         """
@@ -231,20 +241,39 @@ class QASystem(object):
         """
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
+            # sequence of 1 and 0's
+            mask = tf.cast(tf.sequence_mask(self.context_mask_placeholder, 
+                self.context_length), tf.float32)
 
-            mask = tf.sequence_mask(self.context_mask_placeholder, self.context_length)
-            int_mask = tf.cast(mask, tf.float32)
-            mask_s = self.a_s + tf.log(int_mask)
-            mask_e = self.a_e + tf.log(int_mask)    # None, 750
-
-            loss_vec_1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.answer_start_label_placeholder,
-                logits=mask_s)
-            loss_vec_2 = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.answer_end_label_placeholder,
-                logits=mask_e)
-
-            self.loss = tf.reduce_mean(loss_vec_1 + loss_vec_2)
+            if FLAGS.loss == "softmax":
+                # Exp mask for softmax
+                mask_s = self.a_s + tf.log(mask)
+                mask_e = self.a_e + tf.log(mask)    # None, 750
+                loss_s = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=self.answer_start_label_placeholder,
+                    logits=mask_s)
+                loss_e = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=self.answer_end_label_placeholder,
+                    logits=mask_e)
+            else:
+                # Elementwise, 0 for l2
+                mask_s = tf.multiply(self.a_s, mask)
+                mask_e = tf.multiply(self.a_e, mask)
+                label_s = tf.one_hot(self.answer_start_label_placeholder, 
+                    self.context_length, dtype=tf.float32)
+                label_e = tf.one_hot(self.answer_end_label_placeholder, 
+                    self.context_length, dtype=tf.float32)
+                if FLAGS.loss == "l2":
+                    loss_s = tf.nn.l2_loss(label_s - mask_s)
+                    loss_e = tf.nn.l2_loss(label_e - mask_e)
+                elif FLAGS.loss == "sigmoid":
+                    loss_s = tf.nn.sigmoid_cross_entropy_with_logits(
+                        labels=label_s, logits=mask_s)
+                    loss_e = tf.nn.sigmoid_cross_entropy_with_logits(
+                        labels=label_e, logits=mask_e)
+                else:
+                    raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE")        
+        self.loss = tf.reduce_mean(loss_s + loss_e)
 
     def setup_embeddings(self):
         """
@@ -267,8 +296,6 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        # fill in this feed_dictionary like:
-        # input_feed['train_x'] = train_x
         input_feed = {}
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
@@ -438,7 +465,7 @@ class QASystem(object):
             saver.save(session, model_path, global_step=epoch)
 
             val_loss = self.validate(session, val_data)
-            print('Epoch {}, validation loss {}'.format(0, val_loss))   # epoch
+            print('Epoch {}, validation loss {}'.format(epoch, val_loss))   # epoch
 
             # at the end of epoch
             result = self.evaluate_answer(session, train_data, val_data, 
