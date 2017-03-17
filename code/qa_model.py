@@ -195,7 +195,7 @@ class QASystem(object):
             scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
             bw_dropout=self.bw_dropout_placeholder)
 
-        if FLAGS.baseline:
+        if FLAGS.model == 'baseline':
             q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
             p_h = tf.concat([p_h_tup[0].h, p_h_tup[1].h], 1)
             self.a_s, self.a_e = self.decoder.decode(q_h, p_h)
@@ -232,7 +232,7 @@ class QASystem(object):
                 self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                     'answer_pointer_boundary', span_search=True)
             else:
-                raise NotImplementedError("Only allow following models: sequence, boundary, linear")
+                raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
 
     def setup_loss(self):
         """
