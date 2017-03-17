@@ -110,23 +110,23 @@ class Decoder(object):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         # For boundary case, just random thing with 2 time steps, start and end
-        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], 2, p_len))
+        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], p_len, 2))
         if FLAGS.bidirectional_answer_pointer:
-            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
                 FLAGS.loss, model=FLAGS.model)
-            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
                 FLAGS.loss, model=FLAGS.model)
             # TODO: Make sure this is reusing variables
             with vs.variable_scope(scope):
-                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell, 
+                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
                     inputs, dtype=tf.float32, sequence_length=seq_len)
             # simply adding the result from forward and backward
             beta = beta_fw + beta_bw    # None, p_len, p_len + 1
         else:
-            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, 
+            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
                 FLAGS.loss, model=FLAGS.model)
             beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, sequence_length=seq_len)
-            
+
         return beta
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
@@ -212,22 +212,22 @@ class QASystem(object):
                 self.question_length, self.context_mask_placeholder,
                 scope='encode_attn')
             H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
-            
+
             # These are the predict ops
             if FLAGS.model == 'sequence':
                 # beta: None, 750, 751
                 beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
-                    self.context_mask_placeholder, scope='decode_attn_seq')    
+                    self.context_mask_placeholder, scope='decode_attn_seq')
                 # TODO: verify this selection is correct
                 self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
                 # Getting the P + 1 column
                 self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
             elif FLAGS.model == 'boundary':
-                # beta: None, 2, 750
+                # beta: None, 750, 2
                 beta = self.decoder.decode_w_attn(H_r, self.context_length, 
                     self.context_mask_placeholder, scope='decode_attn_bnd')
-                self.a_s = tf.reshape(beta[:, 0, :], [-1, self.context_length])
-                self.a_e = tf.reshape(beta[:, 1, :], [-1, self.context_length])
+                self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
+                self.a_e = tf.reshape(beta[..., 1], [-1, self.context_length])
             elif FLAGS.model == 'linear':
                 self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                     'encode_attn_bnd', span_search=True)
@@ -242,7 +242,7 @@ class QASystem(object):
         # Predict 2 numbers (in paper)
         with vs.variable_scope("loss"):
             # sequence of 1 and 0's
-            mask = tf.cast(tf.sequence_mask(self.context_mask_placeholder, 
+            mask = tf.cast(tf.sequence_mask(self.context_mask_placeholder,
                 self.context_length), tf.float32)
 
             if FLAGS.loss == "softmax":
@@ -259,9 +259,9 @@ class QASystem(object):
                 # Elementwise, 0 for l2
                 mask_s = tf.multiply(self.a_s, mask)
                 mask_e = tf.multiply(self.a_e, mask)
-                label_s = tf.one_hot(self.answer_start_label_placeholder, 
+                label_s = tf.one_hot(self.answer_start_label_placeholder,
                     self.context_length, dtype=tf.float32)
-                label_e = tf.one_hot(self.answer_end_label_placeholder, 
+                label_e = tf.one_hot(self.answer_end_label_placeholder,
                     self.context_length, dtype=tf.float32)
                 if FLAGS.loss == "l2":
                     loss_s = tf.nn.l2_loss(label_s - mask_s)
@@ -272,7 +272,7 @@ class QASystem(object):
                     loss_e = tf.nn.sigmoid_cross_entropy_with_logits(
                         labels=label_e, logits=mask_e)
                 else:
-                    raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE")        
+                    raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE")
         self.loss = tf.reduce_mean(loss_s + loss_e)
 
     def setup_embeddings(self):
@@ -299,17 +299,17 @@ class QASystem(object):
         input_feed = {}
         input_feed[self.context_placeholder] = train_x[0][0]
         input_feed[self.question_placeholder] = train_x[1][0]
-        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1], 
+        input_feed[self.context_mask_placeholder] = np.clip(train_x[0][1],
             0, self.context_length)
         input_feed[self.question_mask_placeholder] = np.clip(train_x[1][1],
             0, self.question_length)
-        input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0], 
+        input_feed[self.answer_start_label_placeholder] = np.clip(train_y[0],
             0, self.context_length - 1)
-        input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1], 
+        input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1],
             0, self.context_length - 1)
         input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
         input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
-    
+
         # Gradient norm
         output_feed = [self.loss, self.train_op]
         outputs = session.run(output_feed, input_feed)
@@ -325,7 +325,7 @@ class QASystem(object):
         input_feed = {}
         input_feed[self.context_placeholder] = valid_x[0][0] # None, p_len
         input_feed[self.context_mask_placeholder] = np.clip(valid_x[0][1],
-            0, self.context_length) 
+            0, self.context_length)
         input_feed[self.question_placeholder] = valid_x[1][0]   # None, q_len
         input_feed[self.question_mask_placeholder] = np.clip(valid_x[1][1],
             0, self.question_length)
@@ -401,7 +401,7 @@ class QASystem(object):
         """
         f1, em = 0., 0.
         # Sample each for half of total samples
-        feed_data, ground_truth = get_sampled_data(dataset_train, 
+        feed_data, ground_truth = get_sampled_data(dataset_train,
             dataset_val, self.context_length, self.question_length, sample=sample)
 
         # Get the model back
@@ -446,7 +446,7 @@ class QASystem(object):
         val_data = preprocess_dataset(dataset['val'],
             self.context_length, self.question_length)
 
-        saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
+        saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
         for epoch in range(FLAGS.epochs):
             prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
@@ -462,15 +462,18 @@ class QASystem(object):
             model_path = results_path + "model.weights/"
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
-            saver.save(session, model_path, global_step=epoch)
+            current_model = os.path.join(model_path, "model.%s" % epoch)
+            saved_path = saver.save(session, current_model, global_step=epoch)
+
+            print('Saved model at path {}'.format(saved_path))
 
             val_loss = self.validate(session, val_data)
             print('Epoch {}, validation loss {}'.format(epoch, val_loss))   # epoch
 
             # at the end of epoch
-            result = self.evaluate_answer(session, train_data, val_data, 
+            result = self.evaluate_answer(session, train_data, val_data,
                 FLAGS.evaluate, log=True)
-        
+
         # some free code to print out number of parameters in your model
         # it's always good to check!
         # you will also want to save your model parameters in self.train_dir
@@ -481,6 +484,3 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
-
-
-

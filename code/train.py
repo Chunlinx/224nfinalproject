@@ -17,7 +17,7 @@ from os.path import join as pjoin
 import logging
 
 logging.basicConfig(level=logging.INFO)
-tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.02, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("fw_dropout", 0.9, "Fraction of units not randomly dropped on foward non-recurrent connections.")
 tf.app.flags.DEFINE_float("bw_dropout", 0.9, "Fraction of units not randomly dropped on backward non-recurrent connections.")
@@ -42,7 +42,7 @@ tf.app.flags.DEFINE_integer("evaluate", 90, "How many samples to evaluate EM and
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
-tf.app.flags.DEFINE_integer("train_embeddings", 1, "1 for training embeddings, 0 for not.")
+tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
 tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
 tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
