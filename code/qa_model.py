@@ -230,7 +230,7 @@ class QASystem(object):
                 self.a_e = tf.reshape(beta[:, 1, :], [-1, self.context_length])
             elif FLAGS.model == 'linear':
                 self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
-                    'answer_pointer_boundary', span_search=True)
+                    'encode_attn_bnd', span_search=True)
             else:
                 raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
 
