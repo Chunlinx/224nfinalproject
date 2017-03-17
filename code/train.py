@@ -18,9 +18,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("fw_dropout", 0.9, "Fraction of units not randomly dropped on foward non-recurrent connections.")
-tf.app.flags.DEFINE_float("bw_dropout", 0.9, "Fraction of units not randomly dropped on backward non-recurrent connections.")
-tf.app.flags.DEFINE_integer("epochs", 12, "Number of epochs to train.")
+tf.app.flags.DEFINE_float("fw_dropout", 1., "Fraction of units not randomly dropped on foward non-recurrent connections.")
+tf.app.flags.DEFINE_float("bw_dropout", 1., "Fraction of units not randomly dropped on backward non-recurrent connections.")
+tf.app.flags.DEFINE_integer("epochs", 7, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
 tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
@@ -33,11 +33,11 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
-tf.app.flags.DEFINE_integer("evaluate", 90, "How many samples to evaluate EM and F1 score.") # 100
+tf.app.flags.DEFINE_integer("evaluate", 100, "How many samples to evaluate EM and F1 score.") # 100
 
 # Training options
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta")
-tf.app.flags.DEFINE_float("learning_rate", 0.2, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", .01, "Learning rate.")
 tf.app.flags.DEFINE_integer("batch_size", 5, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
@@ -114,7 +114,7 @@ def main(_):
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         initialize_model(sess, qa, load_train_dir)
         save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        qa.train(sess, dataset, save_train_dir)
+        # qa.train(sess, dataset, save_train_dir)
 
         qa.evaluate_answer(sess, preprocess_dataset(dataset['train'], FLAGS.output_size, 
             FLAGS.question_size), preprocess_dataset(dataset['val'], FLAGS.output_size,

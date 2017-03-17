@@ -7,12 +7,12 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 class MatchLSTMCell(LSTMCell):
 
-    def __init__(self, num_units, h_q, p_len, q_len, scope=None):
+    def __init__(self, num_units, h_q, p_len, q_len):
         super(MatchLSTMCell, self).__init__(num_units)
         self._cell = LSTMCell(num_units)    # 400 for bidirection
         self.p_len = p_len
         self.q_len = q_len
-        self.Hq = h_q  
+        self.Hq = h_q
 
     @property
     def state_size(self):
@@ -74,6 +74,7 @@ class AnsPtrLSTMCell(LSTMCell):
         else:   # Not concatenating for boundary model
             self.H = Hr
         self.loss = loss
+        
     @property
     def state_size(self):
         return self._state_size

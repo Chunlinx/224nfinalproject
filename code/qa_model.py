@@ -38,16 +38,14 @@ class Encoder(object):
     def __init__(self, size, vocab_dim):
         self.size = size
         self.vocab_dim = vocab_dim
-
-        self.forward_cell = tf.contrib.rnn.LSTMCell(self.size)
-        self.backward_cell = tf.contrib.rnn.LSTMCell(self.size)
+        self.preprocess_cell = tf.contrib.rnn.LSTMCell(self.size)
 
     def encode(self, inputs, seq_len_vec, init_fw_encoder_state, init_bw_encoder_state, scope='',
-        fw_dropout=1, bw_dropout=1):
+        reuse=None, fw_dropout=1, bw_dropout=1):
         """
         In a generalized encode function, you pass in your inputs,
         masks, and an initial hidden state input into this function.
-
+        
         :param inputs: Symbolic representations of your input
         :param seq_len_vec: the actual length of the input (for masking)
         :param masks: this is to make sure tf.nn.dynamic_rnn doesn't iterate
@@ -58,27 +56,25 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
-        with vs.variable_scope(scope):
+        with vs.variable_scope(scope, reuse=reuse):
             (fw_out, bw_out), final_state_tuple = \
-                tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(self.forward_cell,
-                    output_keep_prob=fw_dropout), tf.contrib.rnn.DropoutWrapper(self.backward_cell,
-                    output_keep_prob=bw_dropout), inputs, dtype=tf.float32, sequence_length=seq_len_vec,
-                        initial_state_fw=init_fw_encoder_state,
-                        initial_state_bw=init_bw_encoder_state)
-            tf.get_variable_scope().reuse_variables()
+                tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(
+                self.preprocess_cell, output_keep_prob=fw_dropout), 
+                tf.contrib.rnn.DropoutWrapper(self.preprocess_cell,
+                output_keep_prob=bw_dropout), inputs, dtype=tf.float32, 
+                sequence_length=seq_len_vec, initial_state_fw=init_fw_encoder_state, 
+                initial_state_bw=init_bw_encoder_state)
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
     def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec,
-            scope=''):
+            scope='', reuse=None):
         state_size = 2 * self.size if FLAGS.bidirectional_preprocess else self.size
-        # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-        fw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
-        bw_cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
-        with vs.variable_scope(scope):
-            outputs, states = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
+        cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
+        with vs.variable_scope(scope, reuse=reuse):  
+            # Define the MatchLSTMCell cell for the bidirectional_match_lstm
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                 h_p, sequence_length=seq_len_vec, dtype=tf.float32)
-
         return outputs, states
 
 class Decoder(object):
@@ -87,7 +83,7 @@ class Decoder(object):
         self.state_size = FLAGS.state_size
         self.answer_cell = tf.contrib.rnn.LSTMCell(self.state_size)
 
-    def decode(self, h_q, h_p):
+    def decode(self, h_q, h_p, scope=None, reuse=None):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -106,27 +102,22 @@ class Decoder(object):
             a_e = _linear([h_q, h_p], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, seq_len, scope=''):
+    def decode_w_attn(self, H, p_len, seq_len, scope='', reuse=None):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         # For boundary case, just random thing with 2 time steps, start and end
         inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], p_len, 2))
+        cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, FLAGS.loss, model=FLAGS.model)
         if FLAGS.bidirectional_answer_pointer:
-            fw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
-                FLAGS.loss, model=FLAGS.model)
-            bw_cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
-                FLAGS.loss, model=FLAGS.model)
             # TODO: Make sure this is reusing variables
-            with vs.variable_scope(scope):
-                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(fw_cell, bw_cell,
+            with vs.variable_scope(scope + '_bidirect', reuse=reuse):
+                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                     inputs, dtype=tf.float32, sequence_length=seq_len)
             # simply adding the result from forward and backward
             beta = beta_fw + beta_bw    # None, p_len, p_len + 1
         else:
-            cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len,
-                FLAGS.loss, model=FLAGS.model)
-            beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, sequence_length=seq_len)
-
+            beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
+                sequence_length=seq_len)
         return beta
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
@@ -185,14 +176,14 @@ class QASystem(object):
         :return:
         """
         # put the network together (combine add loss, etc)
-
-        q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
-            self.question_mask_placeholder, None, None, scope='question_encode',
-            fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
-        p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed,
-            self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
-            scope='context_encode', fw_dropout=self.fw_dropout_placeholder,
-            bw_dropout=self.bw_dropout_placeholder)
+        with vs.variable_scope('encode'):
+            q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
+                self.question_mask_placeholder, None, None, 
+                fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
+            p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed,
+                self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
+                fw_dropout=self.fw_dropout_placeholder,
+                bw_dropout=self.bw_dropout_placeholder, reuse=True)
 
         if FLAGS.model == 'baseline':
             q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
@@ -219,8 +210,8 @@ class QASystem(object):
                     self.context_mask_placeholder, scope='decode_attn_seq')
                 # TODO: verify this selection is correct
                 self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
-                # Getting the P + 1 column
                 self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
+
             elif FLAGS.model == 'boundary':
                 # beta: None, 750, 2
                 beta = self.decoder.decode_w_attn(H_r, self.context_length, 
@@ -415,16 +406,13 @@ class QASystem(object):
         feed_data, ground_truth = get_sampled_data(dataset_train,
             dataset_val, self.context_length, self.question_length, sample=sample)
 
-        # Get the model back
-        saver = tf.train.Saver()
-        if saver.last_checkpoints:
-            saver.restore(session, saver.last_checkpoints[-1])
-
         for i, d in enumerate(feed_data):
             a_s, a_e = self.answer(session, (d[0], d[1]))
             answer = d[0][0].flatten()[int(a_s): int(a_e) + 1].tolist()
-            f1 += f1_score(answer, ground_truth[i]) / sample
-            if exact_match_score(answer, ground_truth[i]):
+            truth = ' '.join([str(s) for s in ground_truth[i]])
+            ans = ' '.join([str(s) for s in answer])
+            f1 += f1_score(ans, truth) / sample
+            if exact_match_score(ans, truth):
                 em += 1. / sample
         if log:
             logging.info("F1: {}, EM: {}%, for {} samples".format(f1, em * 100, sample))

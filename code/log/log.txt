@@ -41,3 +41,34 @@ Created model with fresh parameters.
 Num params: 8170403
 Created model with fresh parameters.
 Num params: 8170403
+Created model with fresh parameters.
+Num params: 8170403
+Created model with fresh parameters.
+Num params: 8170403
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 5928004
+Created model with fresh parameters.
+Num params: 5928004
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 5928004
+Created model with fresh parameters.
+Num params: 5928004
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+Created model with fresh parameters.
+Num params: 7688803
+F1: 0.0, EM: 0.0%, for 5 samples
