@@ -17,11 +17,9 @@ from os.path import join as pjoin
 import logging
 
 logging.basicConfig(level=logging.INFO)
-tf.app.flags.DEFINE_float("learning_rate", 0.02, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("fw_dropout", 0.9, "Fraction of units not randomly dropped on foward non-recurrent connections.")
 tf.app.flags.DEFINE_float("bw_dropout", 0.9, "Fraction of units not randomly dropped on backward non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 5, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("epochs", 12, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
@@ -31,7 +29,6 @@ tf.app.flags.DEFINE_string("data_dir", "../data/squad", "SQuAD directory (defaul
 tf.app.flags.DEFINE_string("load_train_dir", "", "Training directory to load model parameters from to resume training (default: {train_dir}).")
 tf.app.flags.DEFINE_string("train_dir", "../train", "Training directory to save the model parameters (default: ./train).")
 tf.app.flags.DEFINE_string("log_dir", "log", "Path to store log and flag files (default: ./log)")
-tf.app.flags.DEFINE_string("optimizer", "adagrad", "adam / sgd / adagrad / adadelta")
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
@@ -39,6 +36,9 @@ tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", 
 tf.app.flags.DEFINE_integer("evaluate", 90, "How many samples to evaluate EM and F1 score.") # 100
 
 # Training options
+tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta")
+tf.app.flags.DEFINE_float("learning_rate", 0.2, "Learning rate.")
+tf.app.flags.DEFINE_integer("batch_size", 5, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")

@@ -175,8 +175,7 @@ class QASystem(object):
             self.setup_loss()
 
         # ==== set up training/updating procedure ====
-        self.train_op = get_optimizer(FLAGS.optimizer)(
-            FLAGS.learning_rate).minimize(self.loss)
+            self.train_op = self.setup_train()
 
     def setup_system(self):
         """
@@ -275,6 +274,18 @@ class QASystem(object):
                     raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE")
         self.loss = tf.reduce_mean(loss_s + loss_e)
 
+    def setup_train(self):
+        optimizer = get_optimizer(FLAGS.optimizer)(
+            FLAGS.learning_rate)
+        grad, var = zip(*optimizer.compute_gradients(self.loss))
+        grad, var = list(grad), list(var)
+        # if self.config.clip_gradients:
+        #     grad, _ = tf.clip_by_global_norm(grad, self.config.max_grad_norm)
+        self.grad_norm = tf.global_norm(grad)
+        train_op = optimizer.apply_gradients(zip(grad, var))
+
+        return train_op
+
     def setup_embeddings(self):
         """
         Loads distributed word representations based on placeholder tokens
@@ -311,7 +322,7 @@ class QASystem(object):
         input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
 
         # Gradient norm
-        output_feed = [self.loss, self.train_op]
+        output_feed = [self.loss, self.train_op, self.grad_norm]
         outputs = session.run(output_feed, input_feed)
 
         return outputs
@@ -453,10 +464,9 @@ class QASystem(object):
 
                 a_s_batch = batch[2]
                 a_e_batch = batch[3]
-                train_loss, _ = self.optimize(session, (batch[0], batch[1]),
+                train_loss, _, grad_norm = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-                prog.update(i + 1, [("train loss", train_loss)])
-
+                prog.update(i + 1, [("train loss", train_loss), ("grad global norm", grad_norm)])
             # Save model here for each epoch
             results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
             model_path = results_path + "model.weights/"
