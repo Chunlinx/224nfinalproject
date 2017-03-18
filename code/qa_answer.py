@@ -235,7 +235,7 @@ def main(_):
     with tf.Session() as sess:
         initialize_model(sess, qa, train_dir)
         answers = generate_answers(sess, qa, dataset, rev_vocab)
-
+        
         # write to json file to root dir
         with io.open('dev-prediction.json', 'w', encoding='utf-8') as f:
             f.write(unicode(json.dumps(answers, ensure_ascii=False)))

@@ -50,11 +50,11 @@ tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
-tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
+tf.app.flags.DEFINE_string("model", "sequence", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
-tf.app.flags.DEFINE_integer("bidirectional_preprocess", 0, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
-tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
+tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
+tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 1, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 tf.app.flags.DEFINE_boolean("swap_memory", True, "True for allowing swaping memory to CPU when GPU memory is exhausted, False for not.")
 FLAGS = tf.app.flags.FLAGS
