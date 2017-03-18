@@ -17,12 +17,6 @@ from os.path import join as pjoin
 import logging
 
 logging.basicConfig(level=logging.INFO)
-tf.app.flags.DEFINE_float("max_gradient_norm", 15.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("epochs", 12, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("state_size", 150, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
-tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
-tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
 tf.app.flags.DEFINE_string("data_dir", "../data/squad", "SQuAD directory (default ./data/squad)")
 tf.app.flags.DEFINE_string("load_train_dir", "", "Training directory to load model parameters from to resume training (default: {train_dir}).")
 tf.app.flags.DEFINE_string("train_dir", "../train", "Training directory to save the model parameters (default: ./train).")
@@ -31,32 +25,10 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
-tf.app.flags.DEFINE_integer("evaluate", 5, "How many samples to evaluate EM and F1 score.") # 100
-
-# Dropouts
-tf.app.flags.DEFINE_float("context_fw_dropout", .8, "Fraction of units not randomly dropped on foward non-recurrent connections.")
-tf.app.flags.DEFINE_float("context_bw_dropout", .8, "Fraction of units not randomly dropped on backward non-recurrent connections.")
-tf.app.flags.DEFINE_float("query_fw_dropout", .8, "query_fw_dropout")
-tf.app.flags.DEFINE_float("query_bw_dropout", .8, "query_bw_dropout")
-tf.app.flags.DEFINE_float("match_fw_dropout", .7, "match_fw_dropout")
-tf.app.flags.DEFINE_float("match_bw_dropout", .7, "match_bw_dropout")
-tf.app.flags.DEFINE_float("as_fw_dropout", .7, "as_fw_dropout")
-tf.app.flags.DEFINE_float("as_bw_dropout", .7, "as_bw_dropout")
-tf.app.flags.DEFINE_float("ae_fw_dropout", .7, "ae_fw_dropout")
-tf.app.flags.DEFINE_float("ae_bw_dropout", .7, "ae_bw_dropout")
-
-# Training options
-tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta")
-tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
-tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")  # 32
-tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
-tf.app.flags.DEFINE_string("model", "sequence", "baseline / boundary / sequence / linear")
-tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
-tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
-tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 1, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 tf.app.flags.DEFINE_boolean("swap_memory", True, "True for allowing swaping memory to CPU when GPU memory is exhausted, False for not.")
+tf.app.flags.DEFINE_integer("config", 0, "Specify under which config to run the train")
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
@@ -97,7 +69,53 @@ def get_normalized_train_dir(train_dir):
     os.symlink(os.path.abspath(train_dir), global_train_dir)
     return global_train_dir
 
+def load_config(current_config):
+    """
+    Load the current config specified by the user under which the train will
+    run.
+    """
+    config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+        '../config', 'config_' + str(current_config) + '.json')
+    if not config_path:
+        raise Exception('Must specify a config for the QA system!')
+    with open(config_path) as data_file:
+        data = json.load(data_file)
+        # Hyperparameters
+        FLAGS.epochs = data['epochs']
+        FLAGS.state_size = data['state_size']
+        FLAGS.output_size = data['output_size']
+        FLAGS.question_size = data['question_size']
+        FLAGS.embedding_size = data['embedding_size']
+
+        # Dropout layers
+        FLAGS.context_fw_dropout = data['context_fw_dropout']
+        FLAGS.context_bw_dropout = data['context_bw_dropout']
+        FLAGS.query_fw_dropout = data['query_fw_dropout']
+        FLAGS.query_bw_dropout = data['query_bw_dropout']
+        FLAGS.match_fw_dropout = data['match_fw_dropout']
+        FLAGS.match_bw_dropout = data['match_bw_dropout']
+        FLAGS.as_fw_dropout = data['as_fw_dropout']
+        FLAGS.as_bw_dropout = data['as_bw_dropout']
+        FLAGS.ae_fw_dropout = data['ae_fw_dropout']
+        FLAGS.ae_bw_dropout = data['ae_bw_dropout']
+
+        # Learning options
+        FLAGS.max_gradient_norm = data['max_gradient_norm']
+        FLAGS.optimizer = data['optimizer']
+        FLAGS.learning_rate = data['learning_rate']
+        FLAGS.batch_size = data['batch_size']
+        FLAGS.test_run = data['test_run']
+        FLAGS.bidirectional_preprocess = data['bidirectional_preprocess']
+        FLAGS.bidirectional_answer_pointer = data['bidirectional_answer_pointer']      
+        FLAGS.model = data['model']
+        FLAGS.loss = data['loss']
+        FLAGS.evaluate = data['evaluate']
+
+    print('Successfully loaded system config.')
+
 def main(_):
+
+    load_config(current_config=FLAGS.config)
 
     # Do what you need to load datasets from FLAGS.data_dir
     dataset = load_data(FLAGS.data_dir) # ((question, context), answer)
@@ -118,15 +136,12 @@ def main(_):
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
     file_handler = logging.FileHandler(pjoin(FLAGS.log_dir, 
-        "log" + FLAGS.loss + '_' + FLAGS.model + '_' + \
-        str(FLAGS.bidirectional_preprocess) + \
-        str(FLAGS.bidirectional_answer_pointer) + ".txt"))
+        "log" + '_config_' + str(FLAGS.config) + ".txt"))
     logging.getLogger().addHandler(file_handler)
 
     print(vars(FLAGS))
-    with open(os.path.join(FLAGS.log_dir, "flags" + FLAGS.loss + '_' + FLAGS.model + '_' + \
-        str(FLAGS.bidirectional_preprocess) + \
-        str(FLAGS.bidirectional_answer_pointer) + ".json"), 'w') as fout:
+    with open(os.path.join(FLAGS.log_dir, "flags" + '_config_' +\
+        str(FLAGS.config) + ".json"), 'w') as fout:
         json.dump(FLAGS.__flags, fout)
 
     with tf.Session() as sess:

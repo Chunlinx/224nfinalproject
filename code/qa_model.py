@@ -517,8 +517,7 @@ class QASystem(object):
                 prog.update(i + 1, [("train loss", train_loss), ("global norm", grad_norm)])
             
             # Save model here for each epoch
-            results_path = save_train_dir + "/{}/".format(FLAGS.loss + '_' + FLAGS.model + \
-                '_' + str(FLAGS.bidirectional_preprocess) + str(FLAGS.bidirectional_answer_pointer))
+            results_path = save_train_dir + "/{}/".format('config_' + str(FLAGS.config))
             model_path = results_path + "model.weights/"
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
