@@ -108,6 +108,7 @@ class Decoder(object):
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         # For boundary case, just random thing with p_len time steps and 1 output size
         inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], 1, 2 * state_size))
+        seq_len = seq_len if FLAGS.model == 'sequence' else tf.ones((tf.shape(H)[0],), dtype=tf.int32)
         cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, FLAGS.loss, model=FLAGS.model)
         with vs.variable_scope(scope, reuse=reuse):
             # Two cases
@@ -123,8 +124,7 @@ class Decoder(object):
                 beta = beta_fw + beta_bw    # None, p_len, p_len + 1
             else:
                 beta, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
-                    sequence_length=seq_len, initial_state=init_state, 
-                    swap_memory=FLAGS.swap_memory)
+                    initial_state=init_state, sequence_length=seq_len, swap_memory=FLAGS.swap_memory)
         return beta, states
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
