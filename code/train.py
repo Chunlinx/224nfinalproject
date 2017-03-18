@@ -114,7 +114,7 @@ def load_config(current_config):
     print('Successfully loaded system config.')
 
 def main(_):
-    FLAGS.config = int(sys.argv[0])
+    FLAGS.config = int(sys.argv[1])
     load_config(current_config=FLAGS.config)
 
     # Do what you need to load datasets from FLAGS.data_dir
