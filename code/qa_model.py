@@ -393,7 +393,6 @@ class QASystem(object):
         """
         valid_c, valid_q, valid_a_s, valid_a_e = valid_dataset
         valid_cost = self.test(sess, (valid_c, valid_q), (valid_a_s, valid_a_e))
-
         return valid_cost
 
     def evaluate_answer(self, session, dataset_train, dataset_val, sample=100, log=False):
@@ -459,6 +458,7 @@ class QASystem(object):
                 train_loss, _, grad_norm = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
                 prog.update(i + 1, [("train loss", train_loss), ("global norm", grad_norm)])
+            
             # Save model here for each epoch
             results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
             model_path = results_path + "model.weights/"
@@ -466,11 +466,13 @@ class QASystem(object):
                 os.makedirs(model_path)
             current_model = os.path.join(model_path, "model.%s" % epoch)
             saved_path = saver.save(session, current_model, global_step=epoch)
-
             print('Saved model at path {}'.format(saved_path))
 
-            val_loss = self.validate(session, val_data)
-            print('Epoch {}, validation loss {}'.format(epoch, val_loss))   # epoch
+            # Averaging validation cost
+            val_loss = 0
+            for j, batch in enumerate(get_minibatch(val_data, FLAGS.batch_size)):
+                val_loss += self.validate(session, batch)[0]
+            print('Epoch {}, validation loss {}'.format(epoch, val_loss / (j + 1)))   # epoch
 
             # at the end of epoch
             result = self.evaluate_answer(session, train_data, val_data,
@@ -486,3 +488,5 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+
