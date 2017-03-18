@@ -136,11 +136,10 @@ class Decoder(object):
                     swap_memory=FLAGS.swap_memory)
         return beta, states
 
-    def linear_decode(self, H, p_len, scope='', span_search=False):
+    def linear_decode(self, H, p_len, scope=''):
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         with vs.variable_scope(scope):
-            return rnn_ops._linear_decode(H, state_size, p_len, FLAGS.loss,
-                span_search)
+            return rnn_ops._linear_decode(H, state_size, p_len, FLAGS.loss)
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
