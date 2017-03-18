@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import os, sys
 import json
 
 import tensorflow as tf
@@ -114,7 +114,7 @@ def load_config(current_config):
     print('Successfully loaded system config.')
 
 def main(_):
-
+    FLAGS.config = int(sys.argv[0])
     load_config(current_config=FLAGS.config)
 
     # Do what you need to load datasets from FLAGS.data_dir
