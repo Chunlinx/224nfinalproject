@@ -106,7 +106,7 @@ class Decoder(object):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         # For boundary case, just random thing with p_len time steps and 1 output size
-        inputs = H
+        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], 1, 2 * state_size))
         cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, FLAGS.loss, model=FLAGS.model)
         with vs.variable_scope(scope, reuse=reuse):
             # Two cases
@@ -216,16 +216,16 @@ class QASystem(object):
                     self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
 
                 elif FLAGS.model == 'boundary':
-                    # beta: None, 750, 2
+                    # beta: None, 300, 1
                     beta_s, h_s = self.decoder.decode_w_attn(H_r, self.context_length, 
                         self.context_mask_placeholder, None, scope='decode_attn_bnd_s')
+
                     # Now given a_s, find a_e
                     beta_e, _ = self.decoder.decode_w_attn(H_r, self.context_length, 
                         self.context_mask_placeholder, h_s, scope='decode_attn_bnd_e')
-                    x = beta_s[:, -1, :]
-                    x = tf.Print(x, [tf.shape(x)], message='beta_s')
-                    self.a_s = tf.reshape(beta_s[:, -1, :], [-1, self.context_length])
-                    self.a_e = tf.reshape(beta_e[:, -1, :], [-1, self.context_length])
+
+                    self.a_s = tf.reshape(beta_s, [-1, self.context_length])
+                    self.a_e = tf.reshape(beta_e, [-1, self.context_length])
                 elif FLAGS.model == 'linear':
                     self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                         'encode_attn_bnd', span_search=True)
