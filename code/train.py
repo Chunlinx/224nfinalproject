@@ -40,13 +40,13 @@ tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta
 tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
 tf.app.flags.DEFINE_integer("batch_size", 5, "Batch size to use during training.")  # 32
 tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
-tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
+tf.app.flags.DEFINE_string("model", "baseline", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
 tf.app.flags.DEFINE_integer("bidirectional_preprocess", 0, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
 tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
-
+tf.app.flags.DEFINE_boolean("swap_memory", True, "True for allowing swaping memory to CPU when GPU memory is exhausted, False for not.")
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
@@ -91,6 +91,10 @@ def main(_):
 
     # Do what you need to load datasets from FLAGS.data_dir
     dataset = load_data(FLAGS.data_dir) # ((question, context), answer)
+    train_data = preprocess_dataset(dataset['train'],
+        FLAGS.output_size, FLAGS.question_size)
+    val_data = preprocess_dataset(dataset['val'],
+        FLAGS.output_size, FLAGS.question_size)
 
     # print(dataset)
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
@@ -114,11 +118,8 @@ def main(_):
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         initialize_model(sess, qa, load_train_dir)
         save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        qa.train(sess, dataset, save_train_dir)
-
-        qa.evaluate_answer(sess, preprocess_dataset(dataset['train'], FLAGS.output_size, 
-            FLAGS.question_size), preprocess_dataset(dataset['val'], FLAGS.output_size,
-            FLAGS.question_size), FLAGS.evaluate, log=True)
+        qa.train(sess, train_data, val_data, save_train_dir)
+        qa.evaluate_answer(sess, train_data, val_data, FLAGS.evaluate, log=True)
 
 if __name__ == "__main__":
     tf.app.run()

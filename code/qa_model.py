@@ -63,7 +63,7 @@ class Encoder(object):
                 tf.contrib.rnn.DropoutWrapper(self.preprocess_cell,
                 output_keep_prob=bw_dropout), inputs, dtype=tf.float32, 
                 sequence_length=seq_len_vec, initial_state_fw=init_fw_encoder_state, 
-                initial_state_bw=init_bw_encoder_state)
+                initial_state_bw=init_bw_encoder_state, swap_memory=FLAGS.swap_memory)
         #(N, T, d)   N: batch size   T: time steps  d: vocab_dim
         return fw_out, bw_out, final_state_tuple
 
@@ -74,7 +74,8 @@ class Encoder(object):
         with vs.variable_scope(scope, reuse=reuse):  
             # Define the MatchLSTMCell cell for the bidirectional_match_lstm
             outputs, states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
-                h_p, sequence_length=seq_len_vec, dtype=tf.float32)
+                h_p, sequence_length=seq_len_vec, dtype=tf.float32, 
+                swap_memory=FLAGS.swap_memory)
         return outputs, states
 
 class Decoder(object):
@@ -116,18 +117,21 @@ class Decoder(object):
                 # TODO: Make sure this is reusing variables
                 (beta_fw, beta_bw), states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                     inputs, dtype=tf.float32, sequence_length=seq_len,
-                    initial_state_fw=init_state_fw, initial_state_bw=init_state_bw)
+                    initial_state_fw=init_state_fw, initial_state_bw=init_state_bw,
+                    swap_memory=FLAGS.swap_memory)
                 # simply adding the result from forward and backward
                 beta = beta_fw + beta_bw    # None, p_len, p_len + 1
             else:
                 beta, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
-                    sequence_length=seq_len, initial_state=init_state)
+                    sequence_length=seq_len, initial_state=init_state, 
+                    swap_memory=FLAGS.swap_memory)
         return beta, states
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
-        return rnn_ops._linear_decode(H, state_size, p_len, scope, FLAGS.loss,
-            span_search)
+        with vs.variable_scope(scope):
+            return rnn_ops._linear_decode(H, state_size, p_len, FLAGS.loss,
+                span_search)
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -216,7 +220,7 @@ class QASystem(object):
                     self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
 
                 elif FLAGS.model == 'boundary':
-                    # beta: None, 300, 1
+                    # beta: None, 1, 300
                     beta_s, h_s = self.decoder.decode_w_attn(H_r, self.context_length, 
                         self.context_mask_placeholder, None, scope='decode_attn_bnd_s')
 
@@ -228,7 +232,7 @@ class QASystem(object):
                     self.a_e = tf.reshape(beta_e, [-1, self.context_length])
                 elif FLAGS.model == 'linear':
                     self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
-                        'encode_attn_bnd', span_search=True)
+                        scope='encode_attn_bnd', span_search=True)
                 else:
                     raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
 
@@ -424,7 +428,7 @@ class QASystem(object):
             logging.info("F1: {}, EM: {}%, for {} samples".format(f1, em * 100, sample))
         return f1, em
 
-    def train(self, session, dataset, save_train_dir):
+    def train(self, session, train_data, val_data, save_train_dir):
         """
         Implement main training loop
 
@@ -446,16 +450,10 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
-        train_data = preprocess_dataset(dataset['train'],
-            self.context_length, self.question_length)
-        val_data = preprocess_dataset(dataset['val'],
-            self.context_length, self.question_length)
-
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
         for epoch in range(FLAGS.epochs):
-            prog = Progbar(target=1 + int(len(dataset['train']['context']) / FLAGS.batch_size))
+            prog = Progbar(target=1 + int(len(train_data[0][0]) / FLAGS.batch_size))
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
-
                 a_s_batch = batch[2]
                 a_e_batch = batch[3]
                 train_loss, _, grad_norm = self.optimize(session, (batch[0], batch[1]),
