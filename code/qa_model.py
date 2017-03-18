@@ -102,23 +102,27 @@ class Decoder(object):
             a_e = _linear([h_q, h_p], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, seq_len, scope='', reuse=None):
+    def decode_w_attn(self, H, p_len, seq_len, init_state, scope='', reuse=None):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
-        # For boundary case, just random thing with 2 time steps, start and end
-        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], p_len, 2))
+        # For boundary case, just random thing with p_len time steps and 1 output size
+        inputs = H
         cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, FLAGS.loss, model=FLAGS.model)
-        if FLAGS.bidirectional_answer_pointer:
-            # TODO: Make sure this is reusing variables
-            with vs.variable_scope(scope + '_bidirect', reuse=reuse):
-                (beta_fw, beta_bw), _ = tf.nn.bidirectional_dynamic_rnn(cell, cell,
-                    inputs, dtype=tf.float32, sequence_length=seq_len)
-            # simply adding the result from forward and backward
-            beta = beta_fw + beta_bw    # None, p_len, p_len + 1
-        else:
-            beta, _ = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
-                sequence_length=seq_len)
-        return beta
+        with vs.variable_scope(scope, reuse=reuse):
+            # Two cases
+            if FLAGS.bidirectional_answer_pointer:
+                init_state_fw = init_state[0] if init_state else None
+                init_state_bw = init_state[1] if init_state else None
+                # TODO: Make sure this is reusing variables
+                (beta_fw, beta_bw), states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
+                    inputs, dtype=tf.float32, sequence_length=seq_len,
+                    initial_state_fw=init_state_fw, initial_state_bw=init_state_bw)
+                # simply adding the result from forward and backward
+                beta = beta_fw + beta_bw    # None, p_len, p_len + 1
+            else:
+                beta, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
+                    sequence_length=seq_len, initial_state=init_state)
+        return beta, states
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
@@ -197,7 +201,6 @@ class QASystem(object):
                 else:
                     H_p, H_q = p_fw_o, q_fw_o
 
-                # Bidirectional embeddings
                 outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
                     self.question_length, self.context_mask_placeholder,
                     scope='encode_attn')
@@ -206,7 +209,7 @@ class QASystem(object):
                 # These are the predict ops
                 if FLAGS.model == 'sequence':
                     # beta: None, 750, 751
-                    beta = self.decoder.decode_w_attn(H_r, self.context_length + 1,
+                    beta, _ = self.decoder.decode_w_attn(H_r, self.context_length + 1,
                         self.context_mask_placeholder, scope='decode_attn_seq')
                     # TODO: verify this selection is correct
                     self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
@@ -214,13 +217,15 @@ class QASystem(object):
 
                 elif FLAGS.model == 'boundary':
                     # beta: None, 750, 2
-                    beta = self.decoder.decode_w_attn(H_r, self.context_length, 
-                        self.context_mask_placeholder, scope='decode_attn_bnd')
-                    # Just grab the last output since it's the pred after reading
-                    a_s = tf.reshape(beta[:, -1, 0], [-1, 1])
-                    a_e = tf.reshape(beta[:, -1, 1], [-1, 1])
-                    self.a_s = tf.one_hot(a_s, self.context_length, dtype=tf.float32)
-                    self.a_e = tf.one_hot(a_e, self.context_length, dtype=tf.float32)
+                    beta_s, h_s = self.decoder.decode_w_attn(H_r, self.context_length, 
+                        self.context_mask_placeholder, None, scope='decode_attn_bnd')
+                    # Now given a_s, find a_e
+                    beta_e, _ = self.decoder.decode_w_attn(H_r, self.context_length, 
+                        self.context_mask_placeholder, h_s, scope='decode_attn_bnd', reuse=True)
+                    x = beta_s[:, -1, :]
+                    x = tf.Print(x, [tf.shape(x)], message='beta_s')
+                    self.a_s = tf.reshape(beta_s[:, -1, :], [-1, self.context_length])
+                    self.a_e = tf.reshape(beta_e[:, -1, :], [-1, self.context_length])
                 elif FLAGS.model == 'linear':
                     self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
                         'encode_attn_bnd', span_search=True)
@@ -455,7 +460,7 @@ class QASystem(object):
                 a_e_batch = batch[3]
                 train_loss, _, grad_norm = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-                prog.update(i + 1, [("train loss", train_loss), ("grad global norm", grad_norm)])
+                prog.update(i + 1, [("train loss", train_loss), ("global norm", grad_norm)])
             # Save model here for each epoch
             results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
             model_path = results_path + "model.weights/"
