@@ -22,6 +22,9 @@ import qa_data
 import logging
 
 logging.basicConfig(level=logging.INFO)
+_PAD = b"<pad>"
+_SOS = b"<sos>"
+_UNK = b"<unk>"
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -30,6 +33,8 @@ tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped o
 tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 0, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
+tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("train_dir", "train", "Training directory (default: ./train).")
@@ -130,7 +135,57 @@ def generate_answers(sess, model, dataset, rev_vocab):
     :return:
     """
     answers = {}
+    size = len(dataset[0])
+    for item, data in enumerate(dataset[0]):
+        # split the paragraph
+        paragraph = []
+        mask_paragraph = []
+        paragraph_line = data[0].strip().split(' ')
+        # implement over the mask and the paragraph
+        for i in xrange(0, FLAGS.output_size):
+            if i >= len(paragraph_line):
+                break
+            paragraph.append(paragraph_line[i])
+            mask_paragraph.append(True)
+        if len(paragraph_line) < FLAGS.output_size:
+            # pad the paragraph
+            paragraph = paragraph + [_PAD] * (FLAGS.output_size - len(paragraph_line))
+            mask_paragraph = mask_paragraph + [False] * (FLAGS.output_size - len(paragraph_line))
 
+        # prepare the question
+        question = []
+        mask_question = []
+        question_line = data[1].strip().split(' ')
+        # implement over the mask and the question
+        for i in xrange(0, FLAGS.question_size):
+            if i >= len(question_line):
+                break
+            question.append(question_line[i])
+            mask_question.append(True)
+        if len(question_line) < FLAGS.question_size:
+            # pad the paragraph
+            question = question + [_PAD] * (FLAGS.question_size - len(question_line))
+            mask_question = mask_question + [False] * (FLAGS.question_size - len(question_line))
+
+        # append to the length`
+        test_x = (
+            (paragraph, mask_paragraph),
+            (question, mask_question),
+        )
+        a_s, a_e = model.answer(sess, test_x)
+        # if the start and end indexes are mixed up
+        if a_s > a_e:
+            tmp = a_s
+            a_e = a_s
+            a_s = tmp
+        # candidate answer is an array of strings from a_s to a_e + 1
+        candidate = paragraph[a_s:a_e + 1]
+        answer = []
+        # rev_vocab
+        for item in answer:
+            current = rev_vocab[item]
+            answer.append(current)
+        answers[data[2]] = ' '.join(answer)
     return answers
 
 
