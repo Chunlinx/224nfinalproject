@@ -122,7 +122,7 @@ class AnsPtrLSTMCell(LSTMCell):
                 raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE") 
         return b_k, self._cell(m, state)[1]
 
-def _linear_decode(H, num_units, p_len, loss='softmax', span_search=False):
+def _linear_decode(H, num_units, p_len, loss='softmax'):
 
     with vs.variable_scope('ans_s', 
             initializer=tf.contrib.layers.xavier_initializer()):      
@@ -131,13 +131,7 @@ def _linear_decode(H, num_units, p_len, loss='softmax', span_search=False):
             initializer=tf.contrib.layers.xavier_initializer()):
         b_e = _decode_helper(H, num_units, p_len, loss)
     
-    ans_s, ans_e = b_s, b_e
-
-    # TO-DO: p(a_s) x p(a_e)
-    if span_search:
-        pass
-    
-    return ans_s, ans_e
+    return b_s, b_e    
 
 def _decode_helper(H, num_units, p_len, loss):
     """

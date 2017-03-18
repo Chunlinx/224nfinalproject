@@ -106,16 +106,19 @@ class Decoder(object):
     def decode_w_attn(self, H, p_len, seq_len, init_state, scope='', reuse=None):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
-        # For boundary case, just random thing with p_len time steps and 1 output size
-        inputs = H if FLAGS.model == 'sequence' else tf.zeros((tf.shape(H)[0], 1, 2 * state_size))
-        seq_len = seq_len if FLAGS.model == 'sequence' else tf.ones((tf.shape(H)[0],), dtype=tf.int32)
+        if FLAGS.model == 'sequence':
+            # For sequence model, need p + 1 time steps
+            inputs, p_len = H, p_len + 1
+        else:
+            # For boundary model, just random thing with p_len time steps and 1 output size
+            inputs = tf.zeros((tf.shape(H)[0], 1, 2 * state_size))
+            seq_len = tf.ones((tf.shape(H)[0],), dtype=tf.int32)
+
         cell = rnn_ops.AnsPtrLSTMCell(H, state_size, p_len, FLAGS.loss, model=FLAGS.model)
         with vs.variable_scope(scope, reuse=reuse):
-            # Two cases
             if FLAGS.bidirectional_answer_pointer:
                 init_state_fw = init_state[0] if init_state else None
                 init_state_bw = init_state[1] if init_state else None
-                # TODO: Make sure this is reusing variables
                 (beta_fw, beta_bw), states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                     inputs, dtype=tf.float32, sequence_length=seq_len,
                     initial_state_fw=init_state_fw, initial_state_bw=init_state_bw,
@@ -212,10 +215,10 @@ class QASystem(object):
 
                 # These are the predict ops
                 if FLAGS.model == 'sequence':
-                    # beta: None, 750, 751
-                    beta, _ = self.decoder.decode_w_attn(H_r, self.context_length + 1,
+                    # beta: None, 300, 301
+                    beta, _ = self.decoder.decode_w_attn(H_r, self.context_length,
                         self.context_mask_placeholder, None, scope='decode_attn_seq')
-                    # TODO: verify this selection is correct
+                   
                     self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
                     self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
 
@@ -373,6 +376,8 @@ class QASystem(object):
     def answer(self, session, test_x):
 
         yp, yp2 = self.decode(session, test_x)
+
+        # TODO: p(a_s) x p(a_e)
 
         a_s = np.argmax(yp, axis=1)
         a_e = np.argmax(yp2, axis=1)
