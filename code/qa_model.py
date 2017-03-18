@@ -68,14 +68,15 @@ class Encoder(object):
         return fw_out, bw_out, final_state_tuple
 
     def encode_w_attn(self, h_p, h_q, p_len, q_len, seq_len_vec,
-            scope='', reuse=None):
+            scope='', reuse=None, fw_dropout=1, bw_dropout=1):
         state_size = 2 * self.size if FLAGS.bidirectional_preprocess else self.size
         cell = rnn_ops.MatchLSTMCell(state_size, h_q, p_len, q_len)
         with vs.variable_scope(scope, reuse=reuse):  
             # Define the MatchLSTMCell cell for the bidirectional_match_lstm
-            outputs, states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
-                h_p, sequence_length=seq_len_vec, dtype=tf.float32, 
-                swap_memory=FLAGS.swap_memory)
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(tf.contrib.rnn.DropoutWrapper(
+                cell, output_keep_prob=fw_dropout), tf.contrib.rnn.DropoutWrapper(cell, 
+                output_keep_prob=bw_dropout), h_p, sequence_length=seq_len_vec, 
+                dtype=tf.float32, swap_memory=FLAGS.swap_memory)
         return outputs, states
 
 class Decoder(object):
@@ -103,7 +104,8 @@ class Decoder(object):
             a_e = _linear([h_q, h_p], self.output_size, True)
         return a_s, a_e
 
-    def decode_w_attn(self, H, p_len, seq_len, init_state, scope='', reuse=None):
+    def decode_w_attn(self, H, p_len, seq_len, init_state, scope='', reuse=None,
+            fw_dropout=1., bw_dropout=1.):
 
         state_size = 2 * self.state_size if FLAGS.bidirectional_preprocess else self.state_size
         if FLAGS.model == 'sequence':
@@ -119,15 +121,19 @@ class Decoder(object):
             if FLAGS.bidirectional_answer_pointer:
                 init_state_fw = init_state[0] if init_state else None
                 init_state_bw = init_state[1] if init_state else None
-                (beta_fw, beta_bw), states = tf.nn.bidirectional_dynamic_rnn(cell, cell,
+                (beta_fw, beta_bw), states = tf.nn.bidirectional_dynamic_rnn(
+                    tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=fw_dropout), 
+                    tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=bw_dropout),
                     inputs, dtype=tf.float32, sequence_length=seq_len,
                     initial_state_fw=init_state_fw, initial_state_bw=init_state_bw,
                     swap_memory=FLAGS.swap_memory)
                 # simply adding the result from forward and backward
                 beta = beta_fw + beta_bw    # None, p_len, p_len + 1
             else:
-                beta, states = tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32, 
-                    initial_state=init_state, sequence_length=seq_len, swap_memory=FLAGS.swap_memory)
+                beta, states = tf.nn.dynamic_rnn(tf.contrib.rnn.DropoutWrapper(cell,
+                    output_keep_prob=fw_dropout), inputs, dtype=tf.float32, 
+                    initial_state=init_state, sequence_length=seq_len, 
+                    swap_memory=FLAGS.swap_memory)
         return beta, states
 
     def linear_decode(self, H, p_len, scope='', span_search=False):
@@ -168,8 +174,27 @@ class QASystem(object):
             name='a_s_label')
         self.answer_end_label_placeholder = tf.placeholder(tf.int32, (None,),
             name='a_e_label')
-        self.fw_dropout_placeholder = tf.placeholder(tf.float32, (), name='fw_dropout')
-        self.bw_dropout_placeholder = tf.placeholder(tf.float32, (), name='bw_dropout')
+        self.context_fw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='context_fw_dropout_placeholder')
+        self.context_bw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='context_bw_dropout_placeholder')
+        self.query_fw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='query_fw_dropout_placeholder')
+        self.query_bw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='query_bw_dropout_placeholder')
+        self.match_fw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='match_fw_dropout_placeholder')
+        self.match_bw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='match_bw_dropout_placeholder')
+        self.as_fw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='as_fw_dropout_placeholder')
+        self.as_bw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='as_bw_dropout_placeholder')
+        self.ae_fw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='ae_fw_dropout_placeholder')
+        self.ae_bw_dropout_placeholder = tf.placeholder(tf.float32, (), 
+            name='ae_bw_dropout_placeholder')
+
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.contrib.layers.xavier_initializer()):
             self.setup_embeddings()
@@ -190,11 +215,12 @@ class QASystem(object):
         with vs.variable_scope('setup_system'):
             q_fw_o, q_bw_o, q_h_tup = self.encoder.encode(self.question_embed,
                 self.question_mask_placeholder, None, None, scope='preprocess', 
-                fw_dropout=self.fw_dropout_placeholder, bw_dropout=self.bw_dropout_placeholder)
+                fw_dropout=self.query_fw_dropout_placeholder, 
+                bw_dropout=self.query_bw_dropout_placeholder)
             p_fw_o, p_bw_o, p_h_tup = self.encoder.encode(self.context_embed,
                 self.context_mask_placeholder, q_h_tup[0], q_h_tup[1],
-                fw_dropout=self.fw_dropout_placeholder, scope='preprocess', 
-                bw_dropout=self.bw_dropout_placeholder, reuse=True)
+                fw_dropout=self.context_fw_dropout_placeholder, scope='preprocess', 
+                bw_dropout=self.context_bw_dropout_placeholder, reuse=True)
 
             if FLAGS.model == 'baseline':
                 q_h = tf.concat([q_h_tup[0].h, q_h_tup[1].h], 1)
@@ -210,7 +236,8 @@ class QASystem(object):
 
                 outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
                     self.question_length, self.context_mask_placeholder,
-                    scope='encode_attn')
+                    scope='encode_attn', fw_dropout=self.match_fw_dropout_placeholder,
+                    bw_dropout=self.match_bw_dropout_placeholder)
                 H_r = tf.concat([outputs[0], outputs[1]], 2)  # None, 750, 400
 
                 # These are the predict ops
@@ -225,17 +252,21 @@ class QASystem(object):
                 elif FLAGS.model == 'boundary':
                     # beta: None, 1, 300
                     beta_s, h_s = self.decoder.decode_w_attn(H_r, self.context_length, 
-                        self.context_mask_placeholder, None, scope='decode_attn_bnd_s')
+                        self.context_mask_placeholder, None, scope='decode_attn_bnd_s', 
+                        fw_dropout=self.as_fw_dropout_placeholder,
+                        bw_dropout=self.as_bw_dropout_placeholder)
 
                     # Now given a_s, find a_e
                     beta_e, _ = self.decoder.decode_w_attn(H_r, self.context_length, 
-                        self.context_mask_placeholder, h_s, scope='decode_attn_bnd_e')
+                        self.context_mask_placeholder, h_s, scope='decode_attn_bnd_e', 
+                        fw_dropout=self.ae_fw_dropout_placeholder,
+                        bw_dropout=self.ae_bw_dropout_placeholder)
 
                     self.a_s = tf.reshape(beta_s, [-1, self.context_length])
                     self.a_e = tf.reshape(beta_e, [-1, self.context_length])
                 elif FLAGS.model == 'linear':
                     self.a_s, self.a_e = self.decoder.linear_decode(H_r, self.context_length, 
-                        scope='encode_attn_bnd', span_search=True)
+                        scope='encode_attn_bnd')
                 else:
                     raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
 
@@ -322,9 +353,16 @@ class QASystem(object):
             0, self.context_length - 1)
         input_feed[self.answer_end_label_placeholder] = np.clip(train_y[1],
             0, self.context_length - 1)
-        input_feed[self.fw_dropout_placeholder] = FLAGS.fw_dropout
-        input_feed[self.bw_dropout_placeholder] = FLAGS.bw_dropout
-
+        input_feed[self.context_fw_dropout_placeholder] = FLAGS.context_fw_dropout
+        input_feed[self.context_bw_dropout_placeholder] = FLAGS.context_bw_dropout
+        input_feed[self.query_fw_dropout_placeholder] = FLAGS.query_fw_dropout
+        input_feed[self.query_bw_dropout_placeholder] = FLAGS.query_bw_dropout
+        input_feed[self.match_fw_dropout_placeholder] = FLAGS.match_fw_dropout
+        input_feed[self.match_bw_dropout_placeholder] = FLAGS.match_bw_dropout
+        input_feed[self.as_fw_dropout_placeholder] = FLAGS.as_fw_dropout
+        input_feed[self.as_bw_dropout_placeholder] = FLAGS.as_bw_dropout
+        input_feed[self.ae_fw_dropout_placeholder] = FLAGS.ae_fw_dropout
+        input_feed[self.ae_bw_dropout_placeholder] = FLAGS.ae_bw_dropout
         # Gradient norm
         output_feed = [self.loss, self.train_op, self.grad_norm]
         outputs = session.run(output_feed, input_feed)
@@ -348,8 +386,16 @@ class QASystem(object):
             0, self.context_length - 1)  # None
         input_feed[self.answer_end_label_placeholder] = np.clip(valid_y[1],
             0, self.context_length - 1)
-        input_feed[self.fw_dropout_placeholder] = 1.
-        input_feed[self.bw_dropout_placeholder] = 1.
+        input_feed[self.context_fw_dropout_placeholder] = 1.
+        input_feed[self.context_bw_dropout_placeholder] = 1.
+        input_feed[self.query_fw_dropout_placeholder] = 1.
+        input_feed[self.query_bw_dropout_placeholder] = 1.
+        input_feed[self.match_fw_dropout_placeholder] = 1.
+        input_feed[self.match_bw_dropout_placeholder] = 1.
+        input_feed[self.as_fw_dropout_placeholder] = 1.
+        input_feed[self.as_bw_dropout_placeholder] = 1.
+        input_feed[self.ae_fw_dropout_placeholder] = 1.
+        input_feed[self.ae_bw_dropout_placeholder] = 1.
 
         output_feed = [self.loss]
         loss = session.run(output_feed, input_feed)
@@ -366,9 +412,16 @@ class QASystem(object):
         input_feed[self.question_placeholder] = test_x[1][0]
         input_feed[self.context_mask_placeholder] = test_x[0][1]
         input_feed[self.question_mask_placeholder] = test_x[1][1]
-        input_feed[self.fw_dropout_placeholder] = 1.
-        input_feed[self.bw_dropout_placeholder] = 1.
-
+        input_feed[self.context_bw_dropout_placeholder] = 1.
+        input_feed[self.context_fw_dropout_placeholder] = 1.
+        input_feed[self.query_fw_dropout_placeholder] = 1.
+        input_feed[self.query_bw_dropout_placeholder] = 1.
+        input_feed[self.match_fw_dropout_placeholder] = 1.
+        input_feed[self.match_bw_dropout_placeholder] = 1.
+        input_feed[self.as_fw_dropout_placeholder] = 1.
+        input_feed[self.as_bw_dropout_placeholder] = 1.
+        input_feed[self.ae_fw_dropout_placeholder] = 1.
+        input_feed[self.ae_bw_dropout_placeholder] = 1.
         output_feed = [self.a_s, self.a_e]
         outputs = session.run(output_feed, input_feed)
         return outputs
