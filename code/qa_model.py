@@ -506,7 +506,7 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
-        saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+        saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
         for epoch in range(FLAGS.epochs):
             prog = Progbar(target=1 + int(len(train_data[0][0]) / FLAGS.batch_size))
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
@@ -517,19 +517,19 @@ class QASystem(object):
                 prog.update(i + 1, [("train loss", train_loss), ("global norm", grad_norm)])
             
             # Save model here for each epoch
-            results_path = FLAGS.train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
+            results_path = save_train_dir + "/{:%Y%m%d_%H%M%S}/".format(datetime.datetime.now())
             model_path = results_path + "model.weights/"
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
             current_model = os.path.join(model_path, "model.%s" % epoch)
             saved_path = saver.save(session, current_model, global_step=epoch)
-            print('Saved model at path {}'.format(saved_path))
+            logging.info('Saved model at path {}'.format(saved_path))
 
             # Averaging validation cost
             val_loss = 0
             for j, batch in enumerate(get_minibatch(val_data, FLAGS.batch_size)):
                 val_loss += self.validate(session, batch)[0]
-            print('Epoch {}, validation loss {}'.format(epoch, val_loss / (j + 1)))   # epoch
+            logging.info('Epoch {}, validation loss {}'.format(epoch, val_loss / (j + 1)))   # epoch
 
             # at the end of epoch
             result = self.evaluate_answer(session, train_data, val_data,

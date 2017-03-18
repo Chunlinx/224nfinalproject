@@ -117,11 +117,16 @@ def main(_):
 
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
-    file_handler = logging.FileHandler(pjoin(FLAGS.log_dir, "log.txt"))
+    file_handler = logging.FileHandler(pjoin(FLAGS.log_dir, 
+        "log" + FLAGS.loss + '_' + FLAGS.model + '_' + \
+        str(FLAGS.bidirectional_preprocess) + \
+        str(FLAGS.bidirectional_answer_pointer) + ".txt"))
     logging.getLogger().addHandler(file_handler)
 
     print(vars(FLAGS))
-    with open(os.path.join(FLAGS.log_dir, "flags.json"), 'w') as fout:
+    with open(os.path.join(FLAGS.log_dir, "flags" + FLAGS.loss + '_' + FLAGS.model + '_' + \
+        str(FLAGS.bidirectional_preprocess) + \
+        str(FLAGS.bidirectional_answer_pointer) + ".json"), 'w') as fout:
         json.dump(FLAGS.__flags, fout)
 
     with tf.Session() as sess:
