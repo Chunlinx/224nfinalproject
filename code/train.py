@@ -18,8 +18,8 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 tf.app.flags.DEFINE_float("max_gradient_norm", 15.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("epochs", 7, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("epochs", 12, "Number of epochs to train.")
+tf.app.flags.DEFINE_integer("state_size", 150, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
 tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
@@ -34,22 +34,22 @@ tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", 
 tf.app.flags.DEFINE_integer("evaluate", 5, "How many samples to evaluate EM and F1 score.") # 100
 
 # Dropouts
-tf.app.flags.DEFINE_float("context_fw_dropout", .9, "Fraction of units not randomly dropped on foward non-recurrent connections.")
-tf.app.flags.DEFINE_float("context_bw_dropout", .9, "Fraction of units not randomly dropped on backward non-recurrent connections.")
+tf.app.flags.DEFINE_float("context_fw_dropout", .8, "Fraction of units not randomly dropped on foward non-recurrent connections.")
+tf.app.flags.DEFINE_float("context_bw_dropout", .8, "Fraction of units not randomly dropped on backward non-recurrent connections.")
 tf.app.flags.DEFINE_float("query_fw_dropout", .8, "query_fw_dropout")
 tf.app.flags.DEFINE_float("query_bw_dropout", .8, "query_bw_dropout")
-tf.app.flags.DEFINE_float("match_fw_dropout", .8, "match_fw_dropout")
-tf.app.flags.DEFINE_float("match_bw_dropout", .8, "match_bw_dropout")
-tf.app.flags.DEFINE_float("as_fw_dropout", 8., "as_fw_dropout")
-tf.app.flags.DEFINE_float("as_bw_dropout", 8., "as_bw_dropout")
-tf.app.flags.DEFINE_float("ae_fw_dropout", 8., "ae_fw_dropout")
-tf.app.flags.DEFINE_float("ae_bw_dropout", 8., "ae_bw_dropout")
+tf.app.flags.DEFINE_float("match_fw_dropout", .7, "match_fw_dropout")
+tf.app.flags.DEFINE_float("match_bw_dropout", .7, "match_bw_dropout")
+tf.app.flags.DEFINE_float("as_fw_dropout", .7, "as_fw_dropout")
+tf.app.flags.DEFINE_float("as_bw_dropout", .7, "as_bw_dropout")
+tf.app.flags.DEFINE_float("ae_fw_dropout", .7, "ae_fw_dropout")
+tf.app.flags.DEFINE_float("ae_bw_dropout", .7, "ae_bw_dropout")
 
 # Training options
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta")
-tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
-tf.app.flags.DEFINE_integer("batch_size", 64, "Batch size to use during training.")  # 32
-tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for full dataset")
+tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
+tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")  # 32
+tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
 tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
