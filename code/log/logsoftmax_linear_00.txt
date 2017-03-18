@@ -1,0 +1,8 @@
+Created model with fresh parameters.
+Num params: 1844804
+Created model with fresh parameters.
+Num params: 1844804
+Created model with fresh parameters.
+Num params: 1844804
+Created model with fresh parameters.
+Num params: 1844804

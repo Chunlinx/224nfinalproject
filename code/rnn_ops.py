@@ -105,21 +105,23 @@ class AnsPtrLSTMCell(LSTMCell):
             c = tf.get_variable('c', shape=())
 
             # b_k: None, 750     
-            if self.loss == 'l2':        
-                b_k = tf.reshape(tf.nn.softmax(tf.matmul(tf.reshape(F, 
-                    [-1, self._num_units]), w) + c), [-1, self._output_size])
-                # m: None, 400
-                m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), tf.expand_dims(b_k, 2))
-                m = tf.reshape(m, [-1, 2 * self._num_units])
-            elif self.loss == 'softmax' or 'sigmoid':
-                b_k = tf.reshape(tf.matmul(tf.reshape(F, 
-                    [-1, self._num_units]), w) + c, [-1, self._output_size])
-                # m: None, 400
-                m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), 
-                    tf.expand_dims(tf.nn.softmax(b_k), 2))
-                m = tf.reshape(m, [-1, 2 * self._num_units])
+            b_k = tf.reshape(tf.matmul(tf.reshape(F, 
+                [-1, self._num_units]), w) + c, [-1, self._output_size])
+            if self.loss == 'l2':
+                b_k = tf.nn.softmax(b_k)
+                reg_b_k = b_k
             else:
-                raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE") 
+                if self.loss == 'softmax':
+                    reg_b_k = tf.nn.softmax(b_k)
+                elif self.loss == 'sigmoid':
+                    reg_b_k = tf.nn.sigmoid(b_k)
+                else:
+                    raise NotImplementedError("Only allow following loss functions: l2, softmax CE, sigmoid CE") 
+            # m: None, 400   
+            m = tf.matmul(tf.transpose(self.H, perm=[0, 2, 1]), 
+                tf.expand_dims(reg_b_k, 2))
+            m = tf.reshape(m, [-1, 2 * self._num_units])
+        
         return b_k, self._cell(m, state)[1]
 
 def _linear_decode(H, num_units, p_len, loss='softmax'):
