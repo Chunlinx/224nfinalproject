@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer("test_run", 1, "1 for run on tiny dataset; 0 for ful
 tf.app.flags.DEFINE_string("model", "boundary", "baseline / boundary / sequence / linear")
 tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
-tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
+tf.app.flags.DEFINE_integer("bidirectional_preprocess", 0, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
 tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 0, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 

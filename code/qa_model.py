@@ -164,7 +164,7 @@ class QASystem(object):
         self.fw_dropout_placeholder = tf.placeholder(tf.float32, (), name='fw_dropout')
         self.bw_dropout_placeholder = tf.placeholder(tf.float32, (), name='bw_dropout')
         # ==== assemble pieces ====
-        with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
+        with tf.variable_scope("qa", initializer=tf.contrib.layers.xavier_initializer()):
             self.setup_embeddings()
             self.setup_system()
             self.setup_loss()
@@ -210,7 +210,7 @@ class QASystem(object):
                 if FLAGS.model == 'sequence':
                     # beta: None, 750, 751
                     beta, _ = self.decoder.decode_w_attn(H_r, self.context_length + 1,
-                        self.context_mask_placeholder, scope='decode_attn_seq')
+                        self.context_mask_placeholder, None, scope='decode_attn_seq')
                     # TODO: verify this selection is correct
                     self.a_s = tf.reshape(beta[..., 0], [-1, self.context_length])
                     self.a_e = tf.reshape(beta[..., -1], [-1, self.context_length])
@@ -218,10 +218,10 @@ class QASystem(object):
                 elif FLAGS.model == 'boundary':
                     # beta: None, 750, 2
                     beta_s, h_s = self.decoder.decode_w_attn(H_r, self.context_length, 
-                        self.context_mask_placeholder, None, scope='decode_attn_bnd')
+                        self.context_mask_placeholder, None, scope='decode_attn_bnd_s')
                     # Now given a_s, find a_e
                     beta_e, _ = self.decoder.decode_w_attn(H_r, self.context_length, 
-                        self.context_mask_placeholder, h_s, scope='decode_attn_bnd', reuse=True)
+                        self.context_mask_placeholder, h_s, scope='decode_attn_bnd_e')
                     x = beta_s[:, -1, :]
                     x = tf.Print(x, [tf.shape(x)], message='beta_s')
                     self.a_s = tf.reshape(beta_s[:, -1, :], [-1, self.context_length])
