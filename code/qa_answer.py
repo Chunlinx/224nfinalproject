@@ -17,7 +17,7 @@ import tensorflow as tf
 from qa_model import Encoder, QASystem, Decoder
 from preprocessing.squad_preprocess import data_from_json, maybe_download, squad_base_url, \
     invert_map, tokenize, token_idx_map
-import qa_data
+import qa_data, qa_util
 
 import logging
 
@@ -26,14 +26,7 @@ _PAD = b"<pad>"
 _SOS = b"<sos>"
 _UNK = b"<unk>"
 
-FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("dev_path", "../data/squad/dev-v1.1.json", "Path to the JSON dev set to evaluate against (default: ./data/squad/dev-v1.1.json)")
-tf.app.flags.DEFINE_float("max_gradient_norm", 15.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_integer("epochs", 12, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("state_size", 150, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("output_size", 300, "The output size of your model.")   # 750
-tf.app.flags.DEFINE_integer("question_size", 45, "The clip/padding length of question.")
-tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
 tf.app.flags.DEFINE_string("data_dir", "../data/squad", "SQuAD directory (default ./data/squad)")
 tf.app.flags.DEFINE_string("load_train_dir", "", "Training directory to load model parameters from to resume training (default: {train_dir}).")
 tf.app.flags.DEFINE_string("train_dir", "../train", "Training directory to save the model parameters (default: ./train).")
@@ -42,33 +35,11 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "../data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "../data/squad/glove.trimmed.100.npz", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{vocab_dim}.npz)")
-tf.app.flags.DEFINE_integer("evaluate", 5, "How many samples to evaluate EM and F1 score.") # 100
-
-# Dropouts
-tf.app.flags.DEFINE_float("context_fw_dropout", .8, "Fraction of units not randomly dropped on foward non-recurrent connections.")
-tf.app.flags.DEFINE_float("context_bw_dropout", .8, "Fraction of units not randomly dropped on backward non-recurrent connections.")
-tf.app.flags.DEFINE_float("query_fw_dropout", .8, "query_fw_dropout")
-tf.app.flags.DEFINE_float("query_bw_dropout", .8, "query_bw_dropout")
-tf.app.flags.DEFINE_float("match_fw_dropout", .7, "match_fw_dropout")
-tf.app.flags.DEFINE_float("match_bw_dropout", .7, "match_bw_dropout")
-tf.app.flags.DEFINE_float("as_fw_dropout", .7, "as_fw_dropout")
-tf.app.flags.DEFINE_float("as_bw_dropout", .7, "as_bw_dropout")
-tf.app.flags.DEFINE_float("ae_fw_dropout", .7, "ae_fw_dropout")
-tf.app.flags.DEFINE_float("ae_bw_dropout", .7, "ae_bw_dropout")
-
-# Training options
-tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd / adagrad / adadelta")
-tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
-tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")  # 32
-tf.app.flags.DEFINE_integer("test_run", 0, "1 for run on tiny dataset; 0 for full dataset")
-tf.app.flags.DEFINE_string("model", "sequence", "baseline / boundary / sequence / linear")
-tf.app.flags.DEFINE_string("loss", "softmax", "l2 / softmax / sigmoid")
 tf.app.flags.DEFINE_integer("train_embeddings", 0, "1 for training embeddings, 0 for not.")
-tf.app.flags.DEFINE_integer("bidirectional_preprocess", 1, "1 for using BiDirect in LSTM Preprocessing layer, 0 for forward only")
-tf.app.flags.DEFINE_integer("bidirectional_answer_pointer", 1, "1 for using BiDirect in AnswerPointer LSTM for sequence model, 0 for forward only")
 tf.app.flags.DEFINE_integer("ensemble", 0, "1 for using ensemble, 0 for not.")
 tf.app.flags.DEFINE_boolean("swap_memory", True, "True for allowing swaping memory to CPU when GPU memory is exhausted, False for not.")
-
+tf.app.flags.DEFINE_integer("config", 0, "Specify under which config to run the train")
+FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(train_dir)
@@ -94,6 +65,49 @@ def initialize_vocab(vocab_path):
     else:
         raise ValueError("Vocabulary file %s not found.", vocab_path)
 
+def load_config(current_config):
+    """
+    Load the current config specified by the user under which the train will
+    run.
+    """
+    config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+        '../config', 'config_' + str(current_config) + '.json')
+    if not config_path:
+        raise Exception('Must specify a config for the QA system!')
+    with open(config_path) as data_file:
+        data = json.load(data_file)
+        # Hyperparameters
+        FLAGS.epochs = data['epochs']
+        FLAGS.state_size = data['state_size']
+        FLAGS.output_size = data['output_size']
+        FLAGS.question_size = data['question_size']
+        FLAGS.embedding_size = data['embedding_size']
+
+        # Dropout layers
+        FLAGS.context_fw_dropout = data['context_fw_dropout']
+        FLAGS.context_bw_dropout = data['context_bw_dropout']
+        FLAGS.query_fw_dropout = data['query_fw_dropout']
+        FLAGS.query_bw_dropout = data['query_bw_dropout']
+        FLAGS.match_fw_dropout = data['match_fw_dropout']
+        FLAGS.match_bw_dropout = data['match_bw_dropout']
+        FLAGS.as_fw_dropout = data['as_fw_dropout']
+        FLAGS.as_bw_dropout = data['as_bw_dropout']
+        FLAGS.ae_fw_dropout = data['ae_fw_dropout']
+        FLAGS.ae_bw_dropout = data['ae_bw_dropout']
+
+        # Learning options
+        FLAGS.max_gradient_norm = data['max_gradient_norm']
+        FLAGS.optimizer = data['optimizer']
+        FLAGS.learning_rate = data['learning_rate']
+        FLAGS.batch_size = data['batch_size']
+        FLAGS.test_run = data['test_run']
+        FLAGS.bidirectional_preprocess = data['bidirectional_preprocess']
+        FLAGS.bidirectional_answer_pointer = data['bidirectional_answer_pointer']      
+        FLAGS.model = data['model']
+        FLAGS.loss = data['loss']
+        FLAGS.evaluate = data['evaluate']
+
+    print('Successfully loaded system config.')
 
 def read_dataset(dataset, tier, vocab):
     """Reads the dataset, extracts context, question, answer,
@@ -163,60 +177,45 @@ def generate_answers(sess, model, dataset, rev_vocab):
     """
     answers = {}
     size = len(dataset[0])
-    for item, data in enumerate(dataset[0]):
-        # split the paragraph
-        paragraph = []
-        mask_paragraph = []
-        paragraph_line = data[0].strip().split(' ')
-        # implement over the mask and the paragraph
-        for i in xrange(0, FLAGS.output_size):
-            if i >= len(paragraph_line):
-                break
-            paragraph.append(paragraph_line[i])
-            mask_paragraph.append(True)
-        if len(paragraph_line) < FLAGS.output_size:
-            # pad the paragraph
-            paragraph = paragraph + [_PAD] * (FLAGS.output_size - len(paragraph_line))
-            mask_paragraph = mask_paragraph + [False] * (FLAGS.output_size - len(paragraph_line))
+    batch_size = FLAGS.batch_size
+    context_, query_, uuid = dataset
 
-        # prepare the question
-        question = []
-        mask_question = []
-        question_line = data[1].strip().split(' ')
-        # implement over the mask and the question
-        for i in xrange(0, FLAGS.question_size):
-            if i >= len(question_line):
-                break
-            question.append(question_line[i])
-            mask_question.append(True)
-        if len(question_line) < FLAGS.question_size:
-            # pad the paragraph
-            question = question + [_PAD] * (FLAGS.question_size - len(question_line))
-            mask_question = mask_question + [False] * (FLAGS.question_size - len(question_line))
+    context = [c.strip().split(' ') for c in context_]
+    query = [q.strip().split(' ') for q in query_]
+    context_padded, context_mask = qa_util.pad_sequence([[int(c) for c in m] for m in context],
+        FLAGS.output_size)
+    query_padded, query_mask = qa_util.pad_sequence([[int(q) for q in m] for m in query],
+        FLAGS.question_size)
 
-        # append to the length`
+    for i in xrange(0, size, batch_size):
+
+        context_batch = context_padded[i: i + batch_size, :]
+
+        context_mask_batch = context_mask[i: i + batch_size]
+        query_batch = query_padded[i: i + batch_size, :]
+        query_mask_batch = query_mask[i: i + batch_size]
+        uuid_batch = uuid[i: i + batch_size]
+
         test_x = (
-            (paragraph, mask_paragraph),
-            (question, mask_question),
+            (context_batch, context_mask_batch),
+            (query_batch, query_mask_batch)
         )
-        a_s, a_e = model.answer(sess, test_x)
-        # if the start and end indexes are mixed up
-        if a_s > a_e:
-            tmp = a_s
-            a_e = a_s
-            a_s = tmp
-        # candidate answer is an array of strings from a_s to a_e + 1
-        candidate = paragraph[a_s:a_e + 1]
-        answer = []
-        # rev_vocab
-        for item in answer:
-            current = rev_vocab[item]
-            answer.append(current)
-        answers[data[2]] = ' '.join(answer)
+
+        ans = np.dstack(model.answer(sess, test_x))[0]
+        for j, (a_s, a_e) in enumerate(ans):
+            if a_s <= a_e:
+                answers[uuid_batch[j]] = ' '.join(
+                    [rev_vocab[w] for w in context_batch[j][a_s: a_e + 1]])
+            else: # if the start and end indexes are mixed up
+                answers[uuid_batch[j]] = ' '.join(
+                    [rev_vocab[v] for v in context_batch[j][a_e: a_s + 1]])        
     return answers
 
 
 def main(_):
+
+    FLAGS.config = int(sys.argv[1])
+    load_config(current_config=FLAGS.config)
 
     vocab, rev_vocab = initialize_vocab(FLAGS.vocab_path)
 
