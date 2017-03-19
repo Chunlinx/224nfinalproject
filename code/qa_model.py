@@ -433,15 +433,18 @@ class QASystem(object):
         a_s = np.argmax(yp, axis=1)
         a_e = np.argmax(yp2, axis=1)
 
+        # Search within span to limit answer range
         for n in xrange(a_s.shape[0]):
             max_prob = yp[n, a_s[n]] * yp2[n, a_e[n]]
-            for i in xrange(self.context_length):
-                for j in xrange(i, self.context_length):
+            max_s, max_e = a_s[n], a_e[n]
+            for i in xrange(a_s[n], a_e[n] + 1):
+                for j in xrange(i, a_e[n] + 1):
                     curr_prob = yp[n, i] * yp2[n, j]
                     if curr_prob > max_prob:
                         max_prob = curr_prob
-                        a_s[n] = i
-                        a_e[n] = j
+                        max_s = i
+                        max_e = j
+            a_s[n], a_e[n] = max_s, max_e
         return (a_s, a_e)
 
     def validate(self, sess, valid_dataset):
@@ -488,6 +491,7 @@ class QASystem(object):
             f1 += f1_score(ans, truth) / sample
             if exact_match_score(ans, truth):
                 em += 1. / sample
+
         if log:
             logging.info("F1: {}, EM: {}%, for {} samples".format(f1, em * 100, sample))
         return f1, em

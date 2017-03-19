@@ -186,6 +186,7 @@ def generate_answers(sess, model, dataset, rev_vocab):
         FLAGS.output_size)
     query_padded, query_mask = qa_util.pad_sequence([[int(q) for q in m] for m in query],
         FLAGS.question_size)
+    prog = qa_util.Progbar(target=1 + int(len(context_) / batch_size))
 
     for i in xrange(0, size, batch_size):
 
@@ -208,7 +209,8 @@ def generate_answers(sess, model, dataset, rev_vocab):
                     [rev_vocab[w] for w in context_batch[j][a_s: a_e + 1]])
             else: # if the start and end indexes are mixed up
                 answers[uuid_batch[j]] = ' '.join(
-                    [rev_vocab[v] for v in context_batch[j][a_e: a_s + 1]])        
+                    [rev_vocab[v] for v in context_batch[j][a_e: a_s + 1]])  
+        prog.update(i + 1, [("Answering batch", i)])      
     return answers
 
 
