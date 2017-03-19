@@ -148,7 +148,7 @@ def main(_):
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         initialize_model(sess, qa, load_train_dir)
         save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        # qa.train(sess, train_data, val_data, save_train_dir)
+        qa.train(sess, train_data, val_data, save_train_dir)
         qa.evaluate_answer(sess, train_data, val_data, FLAGS.evaluate, log=True)
 
 if __name__ == "__main__":
