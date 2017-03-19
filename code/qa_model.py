@@ -426,21 +426,22 @@ class QASystem(object):
         return outputs
 
     def answer(self, session, test_x):
-    	# 1, 300
+        # 1, 300
         yp, yp2 = self.decode(session, test_x)       
        
         # Global span search 
         a_s = np.argmax(yp, axis=1)
         a_e = np.argmax(yp2, axis=1)
-        max_prob = yp[0, a_s] * yp2[0, a_e]
 
-        for i in xrange(self.context_length):
-        	for j in xrange(i, self.context_length):
-        		curr_prob = yp[0, i] * yp2[0, j]
-        		if curr_prob > max_prob:
-        			max_prob = curr_prob
-        			a_s = i
-        			a_e = j
+        for n in xrange(a_s.shape[0]):
+            max_prob = yp[n, a_s[n]] * yp2[n, a_e[n]]
+            for i in xrange(self.context_length):
+                for j in xrange(i, self.context_length):
+                    curr_prob = yp[n, i] * yp2[n, j]
+                    if curr_prob > max_prob:
+                        max_prob = curr_prob
+                        a_s[n] = i
+                        a_e[n] = j
         return (a_s, a_e)
 
     def validate(self, sess, valid_dataset):
