@@ -30,6 +30,8 @@ def get_optimizer(opt):
         optfn = tf.train.AdagradOptimizer
     elif opt == "adadelta":
         optfn = tf.train.AdadeltaOptimizer
+    elif opt == "adamax":
+        optfn = rnn_ops.AdamaxOptimizer
     else:
         assert (False)
     return optfn
