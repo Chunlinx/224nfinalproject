@@ -86,6 +86,7 @@ def load_config(current_config):
         FLAGS.output_size = data['output_size']
         FLAGS.question_size = data['question_size']
         FLAGS.embedding_size = data['embedding_size']
+        FLAGS.decay = data['decay']
 
         # Dropout layers
         FLAGS.context_fw_dropout = data['context_fw_dropout']

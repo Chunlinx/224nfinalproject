@@ -153,6 +153,7 @@ class QASystem(object):
         # Save your model parameters/checkpoints here
         self.encoder = encoder
         self.decoder = decoder
+        self.learning_rate = FLAGS.learning_rate
         if FLAGS.train_embeddings:
             self.embeddings = tf.Variable(np.load(FLAGS.embed_path)['glove'], dtype=tf.float32)
         else:
@@ -311,8 +312,7 @@ class QASystem(object):
         self.loss = tf.reduce_mean(loss_s + loss_e)
 
     def setup_train(self):
-        optimizer = get_optimizer(FLAGS.optimizer)(
-            FLAGS.learning_rate)
+        optimizer = get_optimizer(FLAGS.optimizer)(self.learning_rate)
         grad, var = zip(*optimizer.compute_gradients(self.loss))
         grad, var = list(grad), list(var)
         grad, _ = tf.clip_by_global_norm(grad, FLAGS.max_gradient_norm)
@@ -519,15 +519,22 @@ class QASystem(object):
         :return:
         """
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
+
+        train_size = int(len(train_data[0][0]) / FLAGS.batch_size)
         for epoch in range(FLAGS.epochs):
-            prog = Progbar(target=1 + int(len(train_data[0][0]) / FLAGS.batch_size))
+            prog = Progbar(target=1 + train_size)
+
             for i, batch in enumerate(get_minibatch(train_data, FLAGS.batch_size)):
                 a_s_batch = batch[2]
                 a_e_batch = batch[3]
+                self.learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, 
+                    i * FLAGS.batch_size, train_size, FLAGS.decay, staircase=True)
                 train_loss, _, grad_norm = self.optimize(session, (batch[0], batch[1]),
                     (a_s_batch, a_e_batch))
-                prog.update(i + 1, [("train loss", train_loss), ("global norm", grad_norm)])
-            
+
+                prog.update(i + 1, [("train loss", train_loss), ("learning rate", 
+                    self.learning_rate.eval()), ("global norm", grad_norm)])
+                
             # Save model here for each epoch
             results_path = save_train_dir + "/{}/".format('config_' + str(FLAGS.config))
             model_path = results_path + "model.weights/"

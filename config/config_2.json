@@ -23,5 +23,6 @@
   "bidirectional_answer_pointer": 0,
   "model": "linear",
   "loss": "softmax",
-  "evaluate": 100
+  "evaluate": 100,
+  "decay": 0.9
 }

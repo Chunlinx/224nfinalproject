@@ -4,4 +4,4 @@ data
 */*.pyc
 *.pyc
 train/*
-code/log
+log
