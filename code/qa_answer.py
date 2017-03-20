@@ -199,10 +199,11 @@ def generate_answers(sess, model, dataset, rev_vocab):
         uuid_batch = uuid[i: i + batch_size]
 
         test_x = (
-            (context_batch, context_mask_batch),
-            (query_batch, query_mask_batch)
+            (context_batch, np.clip(context_mask_batch, 0, FLAGS.output_size)),
+            (query_batch, np.clip(query_mask_batch, 0, FLAGS.question_size))
         )
 
+        # print(i, context_mask_batch.dtype, context_batch.shape)
         ans = np.dstack(model.answer(sess, test_x))[0]
         for j, (a_s, a_e) in enumerate(ans):
             if a_s <= a_e:
@@ -211,7 +212,7 @@ def generate_answers(sess, model, dataset, rev_vocab):
             else: # if the start and end indexes are mixed up
                 answers[uuid_batch[j]] = ' '.join(
                     [rev_vocab[v] for v in context_batch[j][a_e: a_s + 1]])  
-        prog.update(i + 1, [("Answering batch", i)])      
+        prog.update(i, [])   
     return answers
 
 

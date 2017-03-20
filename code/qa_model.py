@@ -235,7 +235,6 @@ class QASystem(object):
                     H_q = tf.concat([q_fw_o, q_bw_o], 2) # None, 45, 400
                 else:
                     H_p, H_q = p_fw_o, q_fw_o
-
                 outputs, _ = self.encoder.encode_w_attn(H_p, H_q, self.context_length,
                     self.question_length, self.context_mask_placeholder,
                     scope='encode_attn', fw_dropout=self.match_fw_dropout_placeholder,
@@ -409,6 +408,8 @@ class QASystem(object):
         :return:
         """
         input_feed = {}
+        
+        # print(test_x[0][1])
         input_feed[self.context_placeholder] = test_x[0][0]
         input_feed[self.question_placeholder] = test_x[1][0]
         input_feed[self.context_mask_placeholder] = test_x[0][1]
@@ -429,7 +430,7 @@ class QASystem(object):
 
     def answer(self, session, test_x):
         # 1, 300
-        yp, yp2 = self.decode(session, test_x)       
+        yp, yp2 = self.decode(session, test_x)
        
         # Global span search 
         a_s = np.argmax(yp, axis=1)
