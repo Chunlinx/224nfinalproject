@@ -42,10 +42,10 @@ tf.app.flags.DEFINE_integer("config", 0, "Specify under which config to run the 
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
-    ckpt = tf.train.get_checkpoint_state(pjoin(train_dir, 'model.weights'))
+    ckpt = tf.train.get_checkpoint_state(pjoin(train_dir, 'config_2/model.weights'))
     print (ckpt.model_checkpoint_path, 'ckpt')
     v2_path = ckpt.model_checkpoint_path + ".index" if ckpt else ""
-    model_path = pjoin(train_dir, 'model.weights', 'checkpoint')
+    model_path = pjoin(train_dir, 'config_2/model.weights', 'checkpoint')
     print (v2_path, 'v2')
     print(ckpt.model_checkpoint_path, 'ckpt')
     # if ckpt and (tf.gfile.Exists(ckpt.model_checkpoint_path) or tf.gfile.Exists(v2_path)):
@@ -53,7 +53,9 @@ def initialize_model(session, model, train_dir):
         # logging.info("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         logging.info("Reading model parameters from %s" % model_path)
         # model.saver.restore(session, ckpt.model_checkpoint_path)
-        model.saver.restore(session, model_path)
+        new_saver = tf.train.import_meta_graph(pjoin(train_dir, 'config_2/model.weights', 'model.4-4.meta'))
+        new_saver.restore(session, tf.train.latest_checkpoint(pjoin(train_dir, 'config_2/model.weights')))
+        # model.saver.restore(session, model_path)
     else:
         logging.info("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
