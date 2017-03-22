@@ -47,8 +47,6 @@ def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(model_path)
     v2_path = ckpt.model_checkpoint_path + ".index" if ckpt else ""
 
-    # Initialize all variables first
-    session.run(tf.global_variables_initializer())
     if ckpt and (tf.gfile.Exists(model_path) or tf.gfile.Exists(v2_path)):
         logging.info("Reading model parameters from %s" % model_path)
         new_saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path + '.meta')
