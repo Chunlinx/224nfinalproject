@@ -270,7 +270,8 @@ class QASystem(object):
                         scope='encode_attn_bnd')
                 else:
                     raise NotImplementedError("Only allow following models: baseline, MatchLSTM/sequence, MatchLSTM/boundary, MatchLSTM/linear")
-
+        self.saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
+    
     def setup_loss(self):
         """
         Set up your loss computation here
@@ -521,7 +522,6 @@ class QASystem(object):
                         pass in multiple components (arguments) of one dataset to this function
         :return:
         """
-        saver = tf.train.Saver(keep_checkpoint_every_n_hours=2)
 
         train_size = int(len(train_data[0][0]) / FLAGS.batch_size)
         for epoch in range(FLAGS.epochs):
@@ -544,7 +544,7 @@ class QASystem(object):
             if not os.path.exists(model_path):
                 os.makedirs(model_path)
             current_model = os.path.join(model_path, "model.%s" % epoch)
-            saved_path = saver.save(session, current_model, global_step=epoch)
+            saved_path = self.saver.save(session, current_model, global_step=epoch)
             logging.info('Saved model at path {}'.format(saved_path))
 
             # Averaging validation cost
