@@ -42,20 +42,17 @@ tf.app.flags.DEFINE_integer("config", 0, "Specify under which config to run the 
 FLAGS = tf.app.flags.FLAGS
 
 def initialize_model(session, model, train_dir):
-    ckpt = tf.train.get_checkpoint_state(pjoin(train_dir, 'config_2/model.weights'))
-    print (ckpt.model_checkpoint_path, 'ckpt')
+
+    model_path = pjoin(train_dir, 'config_' + str(FLAGS.config), 'model.weights')
+    ckpt = tf.train.get_checkpoint_state(model_path)
     v2_path = ckpt.model_checkpoint_path + ".index" if ckpt else ""
-    model_path = pjoin(train_dir, 'config_2/model.weights', 'checkpoint')
-    print (v2_path, 'v2')
-    print(ckpt.model_checkpoint_path, 'ckpt')
-    # if ckpt and (tf.gfile.Exists(ckpt.model_checkpoint_path) or tf.gfile.Exists(v2_path)):
+
+    # Initialize all variables first
+    session.run(tf.global_variables_initializer())
     if ckpt and (tf.gfile.Exists(model_path) or tf.gfile.Exists(v2_path)):
-        # logging.info("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         logging.info("Reading model parameters from %s" % model_path)
-        # model.saver.restore(session, ckpt.model_checkpoint_path)
-        new_saver = tf.train.import_meta_graph(pjoin(train_dir, 'config_2/model.weights', 'model.4-4.meta'))
-        new_saver.restore(session, tf.train.latest_checkpoint(pjoin(train_dir, 'config_2/model.weights')))
-        # model.saver.restore(session, model_path)
+        new_saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path + '.meta')
+        new_saver.restore(session, tf.train.latest_checkpoint(model_path))
     else:
         logging.info("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
@@ -196,7 +193,7 @@ def generate_answers(sess, model, dataset, rev_vocab):
         FLAGS.output_size)
     query_padded, query_mask = qa_util.pad_sequence([[int(q) for q in m] for m in query],
         FLAGS.question_size)
-    prog = qa_util.Progbar(target=1 + int(len(context_) / batch_size))
+    prog = qa_util.Progbar(target=1 + int(len(context_)))
 
     for i in xrange(0, size, batch_size):
 
