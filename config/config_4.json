@@ -1,5 +1,5 @@
 {
-  "epochs": 12,
+  "epochs": 7,
   "state_size": 300,
   "output_size": 300,
   "question_size": 45,
@@ -19,10 +19,10 @@
   "learning_rate": 0.001,
   "batch_size": 30,
   "test_run": 0,
-  "bidirectional_preprocess": 0,
+  "bidirectional_preprocess": 1,
   "bidirectional_answer_pointer": 1,
   "model": "boundary",
   "loss": "softmax",
   "evaluate": 100,
-  "decay": 0.8
+  "decay": 0.9
 }
