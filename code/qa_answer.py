@@ -75,7 +75,7 @@ def load_config(current_config):
     run.
     """
     config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-        '../config', 'config_' + str(current_config) + '.json')
+        './train/config', 'config_' + str(current_config) + '.json')
     if not config_path:
         raise Exception('Must specify a config for the QA system!')
     with open(config_path) as data_file:
