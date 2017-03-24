@@ -49,8 +49,7 @@ def initialize_model(session, model, train_dir):
 
     if ckpt and (tf.gfile.Exists(model_path) or tf.gfile.Exists(v2_path)):
         logging.info("Reading model parameters from %s" % model_path)
-        new_saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path + '.meta')
-        new_saver.restore(session, tf.train.latest_checkpoint(model_path))
+        model.saver.restore(session, tf.train.latest_checkpoint(model_path))
     else:
         logging.info("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
@@ -75,7 +74,7 @@ def load_config(current_config):
     run.
     """
     config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-        './train/config', 'config_' + str(current_config) + '.json')
+        './config', 'config_' + str(current_config) + '.json')
     if not config_path:
         raise Exception('Must specify a config for the QA system!')
     with open(config_path) as data_file:
